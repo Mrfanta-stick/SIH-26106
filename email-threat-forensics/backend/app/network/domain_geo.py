@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_DATA_DIR = Path(
     os.environ.get(
         "ETF_DATA_DIR",
-        Path(__file__).resolve().parents[2] / "data",
+        Path(__file__).resolve().parents[1] / "data",
     )
 )
 
