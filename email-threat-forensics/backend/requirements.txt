@@ -1,0 +1,15 @@
+# ── Core API ─────────────────────────────────────────────────────────────────
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9  # required for multipart/form-data uploads
+
+# ── Data contracts (Stage 1) ────────────────────────────────────────────────
+pydantic>=2.6
+
+# ── Stage 1 — ingestion ─────────────────────────────────────────────────────
+extract-msg>=0.41        # MAPI .msg parser (extract_msg at runtime)
+
+# ── Stage 1/2 — network forensics ───────────────────────────────────────────
+tldextract>=5.1
+python-Levenshtein>=0.25 # fast C-backed edit distance
+geoip2>=4.8              # MaxMind GeoLite2 / GeoLite2-ASN readers
