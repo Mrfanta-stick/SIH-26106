@@ -36,6 +36,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Tuple
+import re
 
 import geoip2.database  # type: ignore  # geoip2 ships unofficial type hints
 import geoip2.errors
@@ -104,6 +105,11 @@ _BRAND_DOMAINS: Tuple[str, ...] = (
     "xero.com",
     "wework.com",
 )
+
+EXTRACTOR = tldextract.TLDExtract(cache_dir=None)
+_BRAND_MAP: dict[str, str] = {
+    EXTRACTOR(d).domain: d for d in _BRAND_DOMAINS if EXTRACTOR(d).domain
+}
 
 
 # Public entry point
@@ -254,37 +260,41 @@ def _registrable_domain(value: str) -> str:
 
 
 def _closest_brand(host: str) -> Tuple[Optional[str], Optional[int]]:
-    """Find the closest brand-domain match within a tight edit-distance budget.
-
-    We compare against the registrable (eTLD+1) sender host so that
-    mail.fedexs.com and fedex.com share a fair comparison axis.
-
-    A budget of 2 was chosen empirically, one substitution and one inserted
-    character catches the bulk of BEC impersonation patterns while avoiding
-    noise from genuinely different domains that happen to be close.
-    """
-    registered = _registrable_domain(host)
-    if not registered:
+    ext = EXTRACTOR(host)
+    domain_prefix = ext.domain.lower()  # e.g., "micros0ft-security-update" or "micros0ft"
+    registered = ext.registered_domain.lower()  # e.g., "micros0ft.com"
+    
+    if not domain_prefix:
         return None, None
+
+    # Exact legitimate match check (e.g. genuine mail from microsoft.com)
+    if registered in _BRAND_DOMAINS:
+        return registered, 0
 
     best_target: Optional[str] = None
     best_distance: Optional[int] = None
-    # A budget relative to target length is too generous for short brands.
-    for target in _BRAND_DOMAINS:
-        dist = lev_distance(registered, target)
-        # Bail early on perfect match.
-        if dist == 0:
-            return target, 0
-        # Reject anything that's farther than edit-distance 2.
-        if dist > 2:
-            continue
-        if best_distance is None or dist < best_distance:
-            best_target = target
-            best_distance = dist
-            if dist == 1:
-                # Cannot beat distance 1? short-circuit.
-                break
-    return best_target, best_distance
 
+    # 1. Check full domain SLD (Direct Typosquatting: "micros0ft" vs "microsoft")
+    for bare_brand, full_domain in _BRAND_MAP.items():
+        dist = lev_distance(domain_prefix, bare_brand)
+        if dist <= 2:
+            return full_domain, dist
+
+    # 2. Check tokenized parts (Combosquatting: "micros0ft-security-update")
+    tokens = re.split(r"[-_.]", domain_prefix)
+    for token in tokens:
+        if len(token) < 4:  # Ignore tiny tokens like "us", "id", "m"
+            continue
+            
+        for bare_brand, full_domain in _BRAND_MAP.items():
+            dist = lev_distance(token, bare_brand)
+            if dist <= 2:
+                if best_distance is None or dist < best_distance:
+                    best_target = full_domain
+                    best_distance = dist
+                    if dist == 0:  # Direct inclusion of legitimate brand keyword (e.g., "paypal-support")
+                        break
+
+    return best_target, best_distance
 
 __all__ = ["OriginNetwork", "resolve"]
