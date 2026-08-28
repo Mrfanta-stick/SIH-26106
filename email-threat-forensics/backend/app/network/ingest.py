@@ -171,27 +171,34 @@ def _split_bodies(msg: Message) -> Tuple[str, str]:
     for part in msg.walk():
         if part.is_multipart():
             continue
+
         ctype = (part.get_content_type() or "").lower()
         disposition = (part.get_content_disposition() or "").lower()
         if "attachment" in disposition:
-            continue  # attachments handled separately.
-        try:
-            payload = part.get_content_disposition()
-        except Exception:  # noqa: BLE001 — payload can fail to decode
-            try:
-                payload = part.get_payload(decode=True) or b""
-            except Exception:  # noqa: BLE001
-                payload = b""
-        if isinstance(payload, bytes):
-            payload = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
-        if not isinstance(payload, str):
             continue
+
+        try:
+            raw = part.get_payload(decode=True) or b""
+        except Exception:
+            raw = b""
+
+        if isinstance(raw, bytes):
+            charset = part.get_content_charset() or "utf-8"
+            payload = raw.decode(charset, errors="replace")
+        elif isinstance(raw, str):
+            payload = raw
+        else:
+            continue
+
+        if not payload.strip():
+            continue
+
         if ctype == "text/plain":
             text_parts.append(payload)
         elif ctype == "text/html":
             html_parts.append(payload)
 
-    # Prefer HTML only if no plaintext candidate is present.
+    # Prefer HTML only if no text-body is available
     return "\n\n".join(text_parts), "\n\n".join(html_parts)
 
 
