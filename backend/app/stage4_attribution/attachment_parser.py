@@ -1,0 +1,124 @@
+import email
+from email import policy
+import hashlib
+import json
+import urllib.request
+import urllib.error
+import redis
+import os
+from dotenv import load_dotenv
+from pathlib import Path
+
+""" VirusTotal is Google's Virus database. 
+Hashes are compared by 67 engines, comparing attachments to already flagged attachments.
+Higher the malicious count, higher the threat."""
+
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
+REDIS_URL = os.getenv("REDIS_URL", "NOT_FOUND")
+cache_db = None
+
+if REDIS_URL and REDIS_URL != "NOT_FOUND":
+    try:
+        # print("Connecting to Redis")
+        cache_db = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=5, ssl_cert_reqs="none")
+        cache_db.ping()
+        # print("Connected to Redis")
+    except redis.exceptions.ConnectionError as e:
+        print("Redis connection error: ", e)
+        cache_db = None
+
+
+# noinspection PyBroadException
+def get_cached_intel(sha256_hash):
+    if not cache_db:
+        return None
+
+    try:
+        cached_intel = cache_db.get(f"vt:{sha256_hash}")
+        if cached_intel:
+            return json.loads(cached_intel)
+    except Exception:
+        pass
+    return None
+
+
+"""
+Suppose a new ransomware was discovered today. We will receive 0 warnings from VT.
+But after some time, VT will be updated and it will show warnings. But if we cache it, and forever use that, we will always display 0 seconds.
+ttl_seconds = that number (7 days in seconds), forces old entry to scrap away after 7 days, and new entry of same hash comes into play.
+"""
+# noinspection PyBroadException
+def set_cached_intel(sha256_hash, data, ttl_seconds=604800):
+    if not cache_db:
+        return
+    try:
+        cache_db.setex(f"vt:{sha256_hash}", ttl_seconds, json.dumps(data))
+    except Exception:
+        pass
+
+# noinspection PyBroadException
+def check_virustotal(sha256_hash, api_key):
+    cached = get_cached_intel(sha256_hash)
+    if cached:
+        # print("Cached found\n")
+        return cached
+
+    if not api_key or api_key == "NOT_FOUND":
+        return {"malicious": 54, "undetected": 16, "status": "Mocked (No API Key)"}
+
+    url = f"https://www.virustotal.com/api/v3/files/{sha256_hash}"
+    headers = {"x-apikey": api_key}
+
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read())
+            stats = data['data']['attributes']['last_analysis_stats']
+            result = {
+                "malicious": stats.get('malicious', 0),
+                "undetected": stats.get('undetected', 0),
+                "status": "Found in VT"
+            }
+
+            set_cached_intel(sha256_hash, result)
+            return result
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            result = {"malicious": 0, "undetected": 0, "status": "File never seen by VT"}
+            set_cached_intel(sha256_hash, result, ttl_seconds=3600) # For undetected, cache only for an hour
+            return result
+        return {"error": f"HTTP {e.code}"}
+    except Exception as e:
+        return {"error": "VT Connection Failed"}
+
+
+def analyze_attachments(eml_file_path, vt_api_key=None):
+    with open(eml_file_path, 'rb') as f:
+        msg = email.message_from_binary_file(f, policy=policy.default)
+
+    attachments_data = []
+
+    for part in msg.walk():
+        filename = part.get_filename()
+
+        if filename:
+            file_payload = part.get_payload(decode=True)
+
+            if file_payload:
+                sha256_hash = hashlib.sha256(file_payload).hexdigest()
+                md5_hash = hashlib.md5(file_payload).hexdigest()
+
+                vt_results = check_virustotal(sha256_hash, vt_api_key)
+
+                attachments_data.append({
+                    "filename": filename,
+                    "size_bytes": len(file_payload),
+                    "md5": md5_hash,
+                    "sha256": sha256_hash,
+                    "mime_type": part.get_content_type(),
+                    "virustotal_scan": vt_results
+                })
+
+    return {"attachments": attachments_data}
