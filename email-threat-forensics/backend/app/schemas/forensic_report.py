@@ -129,6 +129,7 @@ class SuspiciousURL(BaseModel):
     is_mismatch: bool = Field(
         description="True when anchor text hosts a different domain than the destination.",
     )
+    domain: str = "Unknown"
 
 
 class ThreatIntent(BaseModel):

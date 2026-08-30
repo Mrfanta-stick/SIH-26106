@@ -1,9 +1,7 @@
 """FastAPI entry-point — Email Threat Forensics backend.
 
-This module wires **Stage 1 & 2 only** of the pipeline.  Stages 3 (``intent``),
-4 (``attribution``) and 5 (``custody``) belong to Group 3 and are intentionally
-left as well-typed *empty placeholders* so the API contract remains exercisable
-end-to-end today and can be filled in incrementally tomorrow.
+Wires Stage 1 (ingestion & hop traceback), Stage 2 (protocol authentication & GeoIP),
+and Stage 3 URL/obfuscation extraction into the unified MasterForensicReport contract.
 
 Pipeline at ``POST /api/analyze``
 ---------------------------------
@@ -12,16 +10,15 @@ Pipeline at ``POST /api/analyze``
     UploadFile (bytes)
         │
         ▼
-    ingest.extract_evidence(bytes, filename)        → EvidenceMetadata
-    ingest.parse_payload(bytes, filename)           → EmailPayload
+    ingest.extract_evidence(bytes, filename)          → EvidenceMetadata
+    ingest.parse_payload(bytes, filename)             → EmailPayload
         │
-        ▼
-    hop_tracer.extract_origin_ip_from_payload(...)  → str
-    auth_verifier.verify_from_payload(payload)      → ProtocolForensics
-    domain_geo.resolve(from_addr, ip)               → OriginNetwork
+        ├── hop_tracer.extract_origin_ip_from_payload(...) → str
+        ├── auth_verifier.verify_from_payload(payload)     → ProtocolForensics
+        └── domain_geo.resolve(from_addr, ip)              → OriginNetwork
         │
-        ▼
-    stage 3 / 4 / 5 placeholder models              → ThreatIntent / etc.
+        ├── extractor.detect_zero_font_obfuscation(html)   → visible_text, hidden_cues
+        └── extractor.extract_and_analyze_urls(html)       → List[SuspiciousURL]
         │
         ▼
     MasterForensicReport (response_model)
@@ -37,12 +34,11 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.network import auth_verifier, domain_geo, hop_tracer, ingest
+from app.intent.extractor import detect_zero_font_obfuscation, extract_and_analyze_urls
 from app.schemas.forensic_report import (
     AttachmentReport,
     ChainOfCustodyEntry,
     EvidenceMetadata,
-    GraphEdge,
-    GraphNode,
     GraphTopology,
     MasterForensicReport,
     OriginNetwork,
@@ -58,14 +54,12 @@ app = FastAPI(
     title="Email Threat Forensics API",
     description=(
         "DFIR pipeline for SIH Problem Statement 106 — exposes the unified "
-        "MasterForensicReport contract. Stage 1 & 2 only at this revision."
+        "MasterForensicReport contract across network, domain, and intent layers."
     ),
-    version="0.2.0",
+    version="0.3.0",
 )
 
-# Permissive CORS — the Group 1 Next.js frontend may run on any of these dev
-# origins during local development.  The list can be tightened via an env var
-# in production without code changes.
+# Permissive CORS for local Next.js frontend development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -79,15 +73,22 @@ app.add_middleware(
 )
 
 
-# API routes
 @app.get("/health", tags=["meta"])
 async def health() -> dict:
-    """Lightweight liveness probe — does not touch MaxMind or the filesystem."""
+    """Lightweight liveness probe."""
     return {
         "status": "ok",
-        "pipeline_stages_active": ["ingest", "hop_tracer", "auth_verifier", "domain_geo"],
+        "pipeline_stages_active": [
+            "ingest",
+            "hop_tracer",
+            "auth_verifier",
+            "domain_geo",
+            "url_and_obfuscation_extractor",
+        ],
         "pipeline_stages_pending": [
-            "stage3_intent", "stage4_attribution", "stage5_custody",
+            "stage3_nlp_semantic_engine",
+            "stage4_attribution_and_vt",
+            "stage5_custody_anchoring",
         ],
     }
 
@@ -96,16 +97,10 @@ async def health() -> dict:
     "/api/analyze",
     response_model=MasterForensicReport,
     tags=["analysis"],
-    summary="Run Stage 1 & 2 of the DFIR pipeline on a single submission.",
+    summary="Run forensic extraction across Stages 1, 2, and 3 on a single email submission.",
 )
 async def analyze(file: UploadFile = File(...)) -> MasterForensicReport:
-    """
-    Accept an .eml or .msg upload and return a partial MasterForensicReport.
-
-    The response is always a fully-typed MasterForensicReport object;
-    Group 3 fields are returned as empty placeholders so the frontend can
-    render the document layout until those stages land.
-    """
+    """Accept an .eml or .msg upload and return a unified MasterForensicReport."""
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="Missing file upload")
 
@@ -115,38 +110,64 @@ async def analyze(file: UploadFile = File(...)) -> MasterForensicReport:
 
     try:
         report = _analyse_bytes(payload, file.filename)
-    except Exception as exc:  # noqa: BLE001 — never leak 5xx on bad input
+    except Exception as exc:  # noqa: BLE001 — prevent raw 500 leaks
         logger.exception("analysis failed for %s", file.filename)
         raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}") from exc
 
     return report
 
 
-# Stage 1 & 2 wiring — kept in a free function for unit-testability.
 def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
-    # Run Stage 1 & 2 against the raw bytes; assemble the master contract.
-    # Stage 1
+    """Execute ingestion, origin network resolution, and body analysis against raw bytes."""
+    # STAGE 1: Evidence hashing & RFC 5322 parsing
     evidence: EvidenceMetadata = ingest.extract_evidence(payload, filename)
     parsed = ingest.parse_payload(payload, filename)
 
-    # Stage 1 helper → Stage 2 helper
+    # STAGE 1 & 2: Hop tracing, authentication, and origin enrichment
     origin_ip = hop_tracer.extract_origin_ip_from_payload(parsed)
-
-    # Stage 2
     protocol: ProtocolForensics = auth_verifier.verify_from_payload(parsed)
     origin: OriginNetwork = domain_geo.resolve(
         from_address=parsed.from_address or "",
         ip=origin_ip,
     )
 
-    # Stage 3/4/5 — placeholders so the master contract is complete.
-    intent = ThreatIntent(
-        primary_intent="BENIGN",
-        risk_score=0,
-        urgency_score=0.0,
-        flagged_coercion_cues=[],
-        suspicious_urls=_placeholder_suspicious_urls(),
+    # STAGE 3: Hidden-text de-obfuscation & URL mismatch extraction
+    html_source = parsed.html_body or ""
+    _, hidden_chunks = detect_zero_font_obfuscation(html_source)
+    raw_urls = extract_and_analyze_urls(html_source)
+
+    suspicious_urls: List[SuspiciousURL] = [
+        SuspiciousURL(
+            anchor_text=u.get("anchor_text", "<empty>"),
+            destination=u.get("destination", ""),
+            is_mismatch=bool(u.get("is_mismatch", False)),
+            domain=u.get("dest_domain", "unknown"),
+        )
+        for u in raw_urls
+    ]
+
+    # Rule-based threat scoring from extraction indicators
+    mismatch_count = sum(1 for u in raw_urls if u.get("is_mismatch"))
+    redirector_count = sum(1 for u in raw_urls if u.get("is_redirector"))
+    userinfo_count = sum(1 for u in raw_urls if u.get("has_userinfo"))
+
+    calculated_risk = min(
+        100,
+        (mismatch_count * 35)
+        + (redirector_count * 20)
+        + (userinfo_count * 25)
+        + (len(hidden_chunks) * 20),
     )
+
+    intent = ThreatIntent(
+        primary_intent="SUSPICIOUS" if calculated_risk >= 35 else "BENIGN",
+        risk_score=calculated_risk,
+        urgency_score=0.0,
+        flagged_coercion_cues=hidden_chunks,
+        suspicious_urls=suspicious_urls,
+    )
+
+    # STAGES 4 & 5: Placeholders for attachment triage and graph topology
     attachment_forensics: List[AttachmentReport] = _placeholder_attachments(parsed)
     topology = GraphTopology(nodes=[], edges=[], campaign_cluster_id=None)
     chain_of_custody: List[ChainOfCustodyEntry] = _placeholder_chain(evidence)
@@ -163,41 +184,20 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
     )
 
 
-# Placeholder generators — replaced wholesale by Group 3 once their modules
-# land. Kept in one place so they can be deleted in a single PR.
-def _placeholder_suspicious_urls() -> List[SuspiciousURL]:
-    # Intent stage will populate this for real; an empty list keeps the
-    # contract honest about "no finding yet".
-    return []
-
-
 def _placeholder_attachments(parsed: ingest.EmailPayload) -> List[AttachmentReport]:
-    """
-    Pretend we have a static-triage verdict for every observed attachment.
-
-    Stage 4 (app.attribution.attachment) will replace this with real
-    libmagic + zip-bomb analysis once it ships. Until then we expose the
-    filename so the UI can show the file list without an empty panel.
-    """
-    out: List[AttachmentReport] = []
-    for att in parsed.attachments:
-        out.append(
-            AttachmentReport(
-                filename=att.filename,
-                detected_magic=att.content_type,
-                risk="PENDING_TRIAGE",
-            )
+    """Populate initial attachment list until Stage 4 hash verification ships."""
+    return [
+        AttachmentReport(
+            filename=att.filename,
+            detected_magic=att.content_type,
+            risk="PENDING_TRIAGE",
         )
-    return out
+        for att in parsed.attachments
+    ]
 
 
 def _placeholder_chain(evidence: EvidenceMetadata) -> List[ChainOfCustodyEntry]:
-    """
-    Seed the chain of custody with a single 'INTAKE' entry.
-
-    Stage 5 will append further entries; for now we record the SHA-256 and
-    timestamp from :class:`EvidenceMetadata` as our genesis record.
-    """
+    """Genesis entry for chain of custody."""
     return [
         ChainOfCustodyEntry(
             sequence=0,
