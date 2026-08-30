@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Cpu, ShieldAlert, Sparkles, RefreshCw } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { Cpu, Sparkles, RotateCcw, RotateCw, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface Point3D {
   x: number;
@@ -11,7 +11,6 @@ interface Point3D {
 
 export const CyberHoloCore3D: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
   const mouseRef = useRef({ isDown: false, lastX: 0, lastY: 0, rotX: 0.35, rotY: 0.6 });
 
   useEffect(() => {
@@ -218,13 +217,25 @@ export const CyberHoloCore3D: React.FC = () => {
       mouseRef.current.isDown = false;
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const step = 0.12;
+      if (e.key === 'ArrowLeft') mouseRef.current.rotY -= step;
+      else if (e.key === 'ArrowRight') mouseRef.current.rotY += step;
+      else if (e.key === 'ArrowUp') mouseRef.current.rotX -= step;
+      else if (e.key === 'ArrowDown') mouseRef.current.rotX += step;
+      else return;
+      e.preventDefault();
+    };
+
     canvas.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('keydown', handleKeyDown);
 
     return () => {
       cancelAnimationFrame(animationFrameId);
       canvas.removeEventListener('mousedown', handleMouseDown);
+      canvas.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -244,8 +255,28 @@ export const CyberHoloCore3D: React.FC = () => {
       </div>
 
       {/* 3D Canvas Projection */}
-      <div className="relative my-2 flex items-center justify-center cursor-grab active:cursor-grabbing">
-        <canvas ref={canvasRef} className="w-[340px] h-[290px]" />
+      <div className="relative my-2 flex items-center justify-center">
+        <canvas
+          ref={canvasRef}
+          tabIndex={0}
+          role="img"
+          aria-label="Interactive rotating quantum evidence core. Use the arrow keys or the controls below to rotate it."
+          className="w-[340px] h-[290px] cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-purple-500/60 rounded-xl"
+        />
+      </div>
+      <div className="flex items-center justify-center gap-2" aria-label="Quantum evidence core rotation controls">
+        <button type="button" onClick={() => { mouseRef.current.rotY -= 0.2; }} aria-label="Rotate core left" className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/60">
+          <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+        <button type="button" onClick={() => { mouseRef.current.rotX -= 0.2; }} aria-label="Rotate core up" className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/60">
+          <ArrowUp className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+        <button type="button" onClick={() => { mouseRef.current.rotX += 0.2; }} aria-label="Rotate core down" className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/60">
+          <ArrowDown className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
+        <button type="button" onClick={() => { mouseRef.current.rotY += 0.2; }} aria-label="Rotate core right" className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/60">
+          <RotateCw className="w-3.5 h-3.5" aria-hidden="true" />
+        </button>
       </div>
 
       {/* Bottom Status Bar */}

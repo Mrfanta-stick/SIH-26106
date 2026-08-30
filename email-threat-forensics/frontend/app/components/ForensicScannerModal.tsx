@@ -1,162 +1,382 @@
-'use client';
+// app/components/ForensicScannerModal.tsx
+"use client";
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Terminal, CheckCircle2, Cpu, Loader2, AlertTriangle } from 'lucide-react';
-import { ForensicReport } from '../types/forensic';
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import type { ForensicReport } from "../types/forensic";
 
 interface ForensicScannerModalProps {
   file: File;
   onComplete: (report: ForensicReport) => void;
   onError: (message: string) => void;
+  onClose: () => void;
 }
 
-interface LogEntry {
-  text: string;
-  type: 'info' | 'warn' | 'success' | 'danger';
+type ScannerState =
+  | "checking"
+  | "uploading"
+  | "processing"
+  | "success"
+  | "error";
+
+const HARD_TIMEOUT_MS = 30_000;
+
+function isForensicReport(value: unknown): value is ForensicReport {
+  if (!value || typeof value !== "object") return false;
+
+  const report = value as Record<string, unknown>;
+
+  // Keep the runtime validation deliberately conservative: require the
+  // top-level object and the fields the application actually consumes.
+  // Optional forensic stages may be absent while placeholders are used.
+  const hasString = (key: string) =>
+    typeof report[key] === "string" && String(report[key]).length > 0;
+
+  const hasObject = (key: string) =>
+    !!report[key] && typeof report[key] === "object";
+
+  // The backend contract used by the app requires an id/case identifier.
+  // Other fields are validated when present so the backend can evolve
+  // without making preview/mock reports impossible.
+  return (
+    (hasString("id") || hasString("caseId") || hasString("case_id")) &&
+    (hasObject("metadata") ||
+      hasObject("email") ||
+      hasObject("summary") ||
+      hasObject("verdict") ||
+      hasObject("threat"))
+  );
 }
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+function getApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim();
+  return (configured || "http://127.0.0.1:8000").replace(/\/+$/, "");
+}
 
-export const ForensicScannerModal: React.FC<ForensicScannerModalProps> = ({ file, onComplete, onError }) => {
-  const [visibleLogs, setVisibleLogs] = useState<LogEntry[]>([]);
-  const [progress, setProgress] = useState(8);
-  const [status, setStatus] = useState<'scanning' | 'success' | 'error'>('scanning');
-  const started = useRef(false);
+async function fetchWithHardTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  let timeoutId: number | undefined;
 
-  useEffect(() => {
-    if (started.current) return;
-    started.current = true;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      controller.abort("timeout");
+      reject(new DOMException("Backend request timed out.", "TimeoutError"));
+    }, timeoutMs);
+  });
 
-    let cancelled = false;
-    let progressTimer: ReturnType<typeof setInterval> | undefined;
+  const requestPromise = fetch(input, {
+    ...init,
+    signal: controller.signal,
+    cache: "no-store",
+  });
 
-    const addLog = (text: string, type: LogEntry['type'] = 'info') => {
-      if (!cancelled) setVisibleLogs((prev) => [...prev, { text, type }]);
-    };
+  try {
+    return await Promise.race([requestPromise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    controller.abort();
+  }
+}
 
-    const runAnalysis = async () => {
-      addLog(`Evidence stream opened: ${file.name}`);
-      setProgress(15);
+function ForensicScannerModal({
+  file,
+  onComplete,
+  onError,
+  onClose,
+}: ForensicScannerModalProps) {
+  const [state, setState] = useState<ScannerState>("checking");
+  const [progress, setProgress] = useState(5);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isRetrying, setIsRetrying] = useState(false);
+  const requestIdRef = useRef(0);
 
-      progressTimer = setInterval(() => {
-        setProgress((prev) => Math.min(prev + Math.floor(Math.random() * 6) + 2, 92));
-      }, 260);
+  const analyze = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    setState("checking");
+    setProgress(8);
+    setErrorMessage("");
+    setIsRetrying(false);
 
+    const apiUrl = getApiBase();
+    const endpoint = `${apiUrl}/api/analyze`;
+
+    // Fast preflight: if the browser is already offline, don't start the
+    // forensic progress animation or wait for a fetch timeout.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (requestId !== requestIdRef.current) return;
+      setState("error");
+      setErrorMessage(
+        "You appear to be offline. Connect to the network and retry the analysis."
+      );
+      return;
+    }
+
+    setState("uploading");
+    setProgress(18);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      // A very short connection probe catches the common local-development
+      // case (FastAPI isn't running) quickly. It does not replace the real
+      // POST and never treats the probe as a successful analysis.
       try {
-        const formData = new FormData();
-        formData.append('file', file, file.name);
+        await fetchWithHardTimeout(
+          `${apiUrl}/docs`,
+          { method: "GET" },
+          2_500
+        );
+      } catch {
+        if (requestId !== requestIdRef.current) return;
 
-        addLog('Submitting raw evidence to /api/analyze');
-        setProgress(25);
+        setState("error");
+        setErrorMessage(
+          `Unable to reach the forensic backend at ${apiUrl}. ` +
+            "Start the FastAPI service and retry the analysis."
+        );
+        return;
+      }
 
-        const response = await fetch(`${API_BASE_URL}/api/analyze`, {
-          method: 'POST',
-          body: formData,
-        });
+      setState("processing");
+      setProgress(30);
 
-        const data = await response.json().catch(() => null);
+      const progressTimer = window.setInterval(() => {
+        setProgress((current) => Math.min(current + 2, 88));
+      }, 350);
 
-        if (!response.ok) {
-          throw new Error(data?.detail || `Backend returned HTTP ${response.status}`);
+      let response: Response;
+      try {
+        response = await fetchWithHardTimeout(
+          endpoint,
+          {
+            method: "POST",
+            body: formData,
+          },
+          HARD_TIMEOUT_MS
+        );
+      } finally {
+        window.clearInterval(progressTimer);
+      }
+
+      if (requestId !== requestIdRef.current) return;
+
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const errorBody = await response.json();
+          if (errorBody && typeof errorBody.detail === "string") {
+            detail = ` ${errorBody.detail}`;
+          }
+        } catch {
+          // The backend may return a non-JSON error page.
         }
 
-        if (cancelled) return;
-
-        addLog('Ingest complete: SHA-256 evidence metadata generated');
-        addLog('Authentication & origin telemetry received');
-        addLog('Master forensic report validated successfully', 'success');
-        setProgress(100);
-        setStatus('success');
-
-        setTimeout(() => {
-          if (!cancelled) onComplete(data as ForensicReport);
-        }, 500);
-      } catch (error) {
-        if (cancelled) return;
-        const message = error instanceof Error ? error.message : 'Unable to reach the forensic backend.';
-        addLog(message, 'danger');
-        setStatus('error');
-        onError(message);
-      } finally {
-        if (progressTimer) clearInterval(progressTimer);
+        throw new Error(
+          `Backend returned HTTP ${response.status}.${detail}`
+        );
       }
-    };
 
-    void runAnalysis();
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.toLowerCase().includes("application/json")) {
+        throw new Error(
+          "The backend returned a non-JSON response. Check the /api/analyze contract."
+        );
+      }
+
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new Error("The backend returned invalid JSON.");
+      }
+
+      if (!isForensicReport(payload)) {
+        throw new Error(
+          "The backend response does not match the expected forensic report format."
+        );
+      }
+
+      setProgress(100);
+      setState("success");
+
+      // Give React one paint to show completion before handing the report
+      // to the parent. Ignore stale requests if the modal was retried/closed.
+      window.setTimeout(() => {
+        if (requestId === requestIdRef.current) {
+          onComplete(payload);
+        }
+      }, 150);
+    } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+
+      const isTimeout =
+        error instanceof DOMException &&
+        (error.name === "TimeoutError" || error.name === "AbortError");
+
+      const message =
+        isTimeout
+          ? "The forensic backend did not respond within 30 seconds. Check the backend and retry."
+          : error instanceof TypeError
+            ? `Unable to reach the forensic backend at ${apiUrl}. Make sure the FastAPI service is running.`
+            : error instanceof Error
+              ? error.message
+              : "The analysis could not be completed.";
+
+      setState("error");
+      setErrorMessage(message);
+      setProgress(0);
+    }
+  }, [file, onComplete]);
+
+  useEffect(() => {
+    void analyze();
 
     return () => {
-      cancelled = true;
-      if (progressTimer) clearInterval(progressTimer);
+      requestIdRef.current += 1;
     };
-  }, [file, onComplete, onError]);
+  }, [analyze]);
+
+  const handleRetry = () => {
+    setIsRetrying(true);
+    void analyze();
+  };
+
+  const handleClose = () => {
+    requestIdRef.current += 1;
+    onClose();
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="absolute w-[500px] h-[300px] bg-purple-600/20 rounded-full blur-[140px] pointer-events-none" />
-
-      <div className="relative w-full max-w-2xl rounded-2xl bg-[#0a0a12]/95 border border-purple-500/30 shadow-2xl shadow-purple-950/50 overflow-hidden font-mono text-xs">
-        <div className="flex items-center justify-between px-5 py-3.5 bg-white/[0.03] border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
-            <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80" />
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
-            <span className="text-slate-300 font-bold tracking-wider ml-2 flex items-center gap-1.5 text-[11px]">
-              <Terminal className="w-3.5 h-3.5 text-purple-400" />
-              LIVE FORENSIC DECONSTRUCTION STREAM
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-[10px] text-slate-400">
-            <Cpu className={`w-3.5 h-3.5 text-cyan-400 ${status === 'scanning' ? 'animate-spin' : ''}`} />
-            <span>BACKEND ANALYSIS</span>
-          </div>
-        </div>
-
-        <div className="px-5 py-2.5 bg-purple-950/20 border-b border-white/5 flex items-center justify-between text-[11px] text-slate-400">
-          <div className="truncate max-w-[340px]">
-            Target File: <span className="text-purple-300 font-bold">{file.name}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-cyan-300">
-            {status === 'scanning' && <Loader2 className="w-3 h-3 animate-spin" />}
-            {status === 'success' && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
-            {status === 'error' && <AlertTriangle className="w-3 h-3 text-rose-400" />}
-            <span>{status === 'error' ? 'Analysis failed' : `Processing ${progress}%`}</span>
-          </div>
-        </div>
-
-        <div className="p-5 space-y-2.5 min-h-[230px] max-h-[280px] overflow-y-auto">
-          {visibleLogs.map((log, index) => (
-            <div key={index} className="flex items-start gap-2.5 animate-in fade-in slide-in-from-left-2 duration-200">
-              <span className="text-slate-600 shrink-0">[{index + 1}]</span>
-              <span className={`leading-relaxed ${
-                log.type === 'success' ? 'text-emerald-300' :
-                log.type === 'danger' ? 'text-rose-300' :
-                log.type === 'warn' ? 'text-amber-300' : 'text-slate-300'
-              }`}>
-                <span className={`font-bold mr-1.5 ${
-                  log.type === 'success' ? 'text-emerald-400' :
-                  log.type === 'danger' ? 'text-rose-400' :
-                  log.type === 'warn' ? 'text-amber-400' : 'text-cyan-400'
-                }`}>
-                  [{log.type === 'success' ? 'OK' : log.type === 'danger' ? 'ERROR' : log.type.toUpperCase()}]
-                </span>
-                {log.text}
-              </span>
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="forensic-scanner-title"
+    >
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-cyan-400/20 bg-[#080d14] shadow-[0_0_80px_rgba(0,0,0,0.65)]">
+        <div className="border-b border-white/10 px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-cyan-400/70">
+                SPECTRE.DFIR // FORENSIC PIPELINE
+              </p>
+              <h2
+                id="forensic-scanner-title"
+                className="mt-1 text-lg font-semibold text-white"
+              >
+                {state === "error"
+                  ? "Analysis interrupted"
+                  : state === "success"
+                    ? "Analysis complete"
+                    : "Analyzing evidence"}
+              </h2>
             </div>
-          ))}
-          {status === 'scanning' && (
-            <div className="flex items-center gap-2 pt-1 text-purple-400 animate-pulse">
-              <span>&gt;</span><span className="w-2 h-4 bg-purple-400" />
+
+            <button
+              type="button"
+              onClick={handleClose}
+              aria-label="Close forensic scanner"
+              className="rounded-lg p-2 text-slate-500 transition hover:bg-white/5 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="px-6 py-7">
+          {state !== "error" ? (
+            <>
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                      Evidence
+                    </p>
+                    <p className="mt-1 truncate text-sm text-slate-200">
+                      {file.name}
+                    </p>
+                  </div>
+
+                  <span className="shrink-0 font-mono text-xs text-cyan-400">
+                    {progress}%
+                  </span>
+                </div>
+
+                <div
+                  className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10"
+                  aria-label={`Analysis progress ${progress}%`}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={progress}
+                >
+                  <div
+                    className="h-full rounded-full bg-cyan-400 transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+
+                <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                  {state === "checking" && "Checking backend connectivity…"}
+                  {state === "uploading" && "Uploading evidence…"}
+                  {state === "processing" && "Running forensic analysis…"}
+                  {state === "success" && "Report received"}
+                </p>
+              </div>
+
+              <p className="mt-4 text-center font-mono text-[10px] text-slate-600">
+                Backend: {getApiBase()} · Hard timeout: 30s
+              </p>
+            </>
+          ) : (
+            <div
+              className="rounded-xl border border-red-400/20 bg-red-500/5 p-5"
+              role="alert"
+              aria-live="assertive"
+            >
+              <div className="flex gap-3">
+                <div className="mt-0.5 text-red-400" aria-hidden="true">
+                  !
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-red-300">
+                    Backend connection failed
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    {errorMessage}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white focus:outline-none focus:ring-2 focus:ring-cyan-400/50"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  disabled={isRetrying}
+                  className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-wait disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-cyan-300/60"
+                >
+                  {isRetrying ? "Retrying…" : "Retry analysis"}
+                </button>
+              </div>
             </div>
           )}
-        </div>
-
-        <div className="w-full bg-white/5 h-1.5 relative overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-purple-500 via-cyan-400 to-emerald-400 transition-all duration-200 shadow-[0_0_12px_rgba(168,85,247,0.8)]"
-            style={{ width: `${progress}%` }}
-          />
         </div>
       </div>
     </div>
   );
-};
+}
+
+
+export { ForensicScannerModal };
+export default ForensicScannerModal;

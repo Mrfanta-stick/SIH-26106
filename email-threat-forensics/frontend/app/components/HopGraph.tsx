@@ -113,7 +113,16 @@ export const HopGraph: React.FC<HopGraphProps> = ({ report }) => {
               <div
                 key={hop.id}
                 onClick={() => setSelectedHop(index)}
-                className={`p-4 rounded-xl transition-all duration-300 cursor-pointer border flex flex-col items-center text-center relative ${
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelectedHop(index);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={`Inspect hop ${hop.id}: ${hop.name}`}
+                className={`p-4 rounded-xl transition-all duration-300 cursor-pointer border flex flex-col items-center text-center relative focus:outline-none focus:ring-2 focus:ring-purple-500/60 ${
                   isSelected
                     ? 'bg-white/[0.06] border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.25)] scale-[1.02]'
                     : 'bg-[#0d0c18]/80 border-white/5 hover:border-white/20 hover:bg-white/[0.02]'

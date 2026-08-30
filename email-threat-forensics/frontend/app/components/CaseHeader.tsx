@@ -79,6 +79,7 @@ export const CaseHeader: React.FC<CaseHeaderProps> = ({ report }) => {
             </div>
             <button
               onClick={handleCopyHash}
+              aria-label={copied ? "SHA-256 hash copied" : "Copy SHA-256 hash"}
               className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/5 transition-all shrink-0"
               title="Copy SHA-256 Hash"
             >

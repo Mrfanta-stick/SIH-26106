@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { 
   X, 
   Printer, 
@@ -22,15 +22,59 @@ interface DossierModalProps {
 }
 
 export const DossierModal: React.FC<DossierModalProps> = ({ report, onClose }) => {
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const firstFocusable = modalRef.current?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    firstFocusable?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusables = Array.from(
+        modalRef.current?.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      ).filter((element) => !element.hasAttribute('disabled'));
+
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus();
+    };
+  }, [onClose]);
+
   const handlePrint = () => {
     window.print();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto" role="presentation">
       
       {/* Container Box */}
-      <div className="relative w-full max-w-3xl my-8 rounded-2xl bg-[#0e1017] border border-white/15 shadow-2xl shadow-black overflow-hidden text-slate-200 font-sans">
+      <div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="dossier-title" className="relative w-full max-w-3xl my-8 rounded-2xl bg-[#0e1017] border border-white/15 shadow-2xl shadow-black overflow-hidden text-slate-200 font-sans">
         
         {/* Top Modal Controls */}
         <div className="flex items-center justify-between px-6 py-4 bg-white/[0.03] border-b border-white/10 no-print">
@@ -39,13 +83,14 @@ export const DossierModal: React.FC<DossierModalProps> = ({ report, onClose }) =
               <FileText className="w-4 h-4" />
             </div>
             <span className="text-xs font-bold font-mono uppercase tracking-wider text-white">
-              ISO/IEC 27037 Digital Evidence Dossier
+              <span id="dossier-title">ISO/IEC 27037 Digital Evidence Dossier</span>
             </span>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
+              aria-label="Print or save the forensic dossier as PDF"
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition-all shadow-lg active:scale-95"
             >
               <Printer className="w-3.5 h-3.5" />
@@ -53,6 +98,7 @@ export const DossierModal: React.FC<DossierModalProps> = ({ report, onClose }) =
             </button>
             <button
               onClick={onClose}
+              aria-label="Close forensic dossier"
               className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-all"
             >
               <X className="w-4 h-4" />

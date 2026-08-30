@@ -95,10 +95,12 @@ export default function ForensicApp() {
   const [isDossierOpen, setIsDossierOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isPreview, setIsPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === '1') {
+      setIsPreview(true);
       setReport(mockForensicReport);
       setCurrentView('console');
     }
@@ -126,13 +128,18 @@ export default function ForensicApp() {
 
   const handleScanComplete = useCallback((nextReport: ForensicReport) => {
     setReport(nextReport);
+    setIsPreview(false);
     setIsScanning(false);
     setCurrentView('console');
     setActiveTab('triage');
   }, []);
 
-  const handleScanError = useCallback((message: string) => {
+  const handleScanClose = useCallback(() => {
     setIsScanning(false);
+    setError(null);
+  }, []);
+
+  const handleScanError = useCallback((message: string) => {
     setError(message);
   }, []);
 
@@ -145,7 +152,9 @@ export default function ForensicApp() {
   return (
     <div className="relative min-h-screen bg-[#07060c] text-white selection:bg-purple-500/30 overflow-x-hidden font-sans">
       {isScanning && selectedFile && (
-        <ForensicScannerModal file={selectedFile} onComplete={handleScanComplete} onError={handleScanError} />
+        <ForensicScannerModal file={selectedFile} onComplete={handleScanComplete} onError={handleScanError}
+          onClose={handleScanClose}
+        />
       )}
 
       {isDossierOpen && report && <DossierModal report={report} onClose={() => setIsDossierOpen(false)} />}
@@ -177,8 +186,14 @@ export default function ForensicApp() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 relative z-10">
+        {isPreview && (
+          <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-2.5 text-[11px] font-mono text-cyan-200">
+            <span><strong className="text-cyan-300">PREVIEW MODE</strong> — showing bundled forensic sample data. No live backend analysis was performed.</span>
+            <span className="text-cyan-400/70 shrink-0">preview=1</span>
+          </div>
+        )}
         {error && (
-          <div className="mb-6 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
+          <div role="alert" className="mb-6 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
             <AlertCircle className="w-4 h-4 mt-0.5 text-rose-400 shrink-0" />
             <div><strong className="text-rose-300">Backend / upload error:</strong> {error}</div>
           </div>
