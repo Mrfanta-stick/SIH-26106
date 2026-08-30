@@ -204,7 +204,8 @@ def extract_and_analyze_urls(html_content: str) -> List[Dict[str, Any]]:
             anchor_domain = deobfuscated.split("@", 1)[-1].lower().removeprefix("www.")
 
         # flags
-        anchor_has_userinfo = "@" in anchor_text
+        # Only flag userinfo on web URLs (e.g., http://admin@evil.com), not mailto links
+        anchor_has_userinfo = "@" in anchor_text and not scheme == "mailto"
         is_mismatch = bool(
             visible_is_url_like
             and anchor_domain

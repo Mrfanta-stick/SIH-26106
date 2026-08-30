@@ -38,23 +38,21 @@ class ReceivedHop:
 
     raw: str
     hostname: Optional[str]
-    ip: Optional[str]
-    by_host: Optional[str]
-    timestamp_hint: Optional[str]
+    ip: Optional[str] # Sender IP
+    by_host: Optional[str] # Receiving Host Name
+    by_ip: Optional[str] = None # Receiving Host IP
+    timestamp_hint: Optional[str] = None
 
     def is_public(self) -> bool:
         if not self.ip:
             return False
-        try:
-            return not ipaddress.ip_address(self.ip).is_private and \
-                   not ipaddress.ip_address(self.ip).is_loopback and \
-                   not ipaddress.ip_address(self.ip).is_multicast and \
-                   not ipaddress.ip_address(self.ip).is_link_local and \
-                   not ipaddress.ip_address(self.ip).is_reserved and \
-                   not ipaddress.ip_address(self.ip).is_unspecified
-        except ValueError:
-            return False
+        return _is_public(self.ip)
 
+    def is_by_public(self) -> bool:
+        if not self.by_ip:
+            return False
+        return _is_public(self.by_ip)
+    
 
 # Regular expressions used to extract Received: headers.
 
@@ -67,6 +65,10 @@ _RE_IPV6 = re.compile(
 )
 _RE_FROM_HOST = re.compile(r"from\s+(?P<host>[A-Za-z0-9_.\-:\[\]]+)")
 _RE_BY_HOST = re.compile(r"by\s+(?P<host>[A-Za-z0-9_.\-:]+)")
+_RE_BY_IP = re.compile(
+    r"by\s+[A-Za-z0-9_.\-:]+\s*(?:\([^)]*\)\s*)?\[?(?P<ip>(?:\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F:]{3,})\]?",
+    re.IGNORECASE,
+)
 _RE_DATE_HINT = re.compile(
     r";\s*(?P<date>[A-Za-z]{3},\s+\d{1,2}\s+[A-Za-z]{3}\s+\d{4}\s+"
     r"\d{2}:\d{2}(?::\d{2})?(?:\s*[+\-]\d{4})?\s*(?:\([^)]+\))?)"
@@ -164,6 +166,13 @@ def _parse_one(raw: str) -> ReceivedHop:
     """
     ip = _first_valid_ip(raw)
 
+    by_ip_match = _RE_BY_IP.search(raw)
+    by_ip = (
+        by_ip_match.group("ip")
+        if by_ip_match and _is_valid_ip( by_ip_match.group("ip"))
+        else None
+    )
+
     from_match = _RE_FROM_HOST.search(raw)
     by_match = _RE_BY_HOST.search(raw)
     date_match = _RE_DATE_HINT.search(raw)
@@ -173,6 +182,7 @@ def _parse_one(raw: str) -> ReceivedHop:
         hostname=from_match.group("host").strip("[] ") if from_match else None,
         ip=ip,
         by_host=by_match.group("host").strip(" []") if by_match else None,
+        by_ip=by_ip,
         timestamp_hint=date_match.group("date").strip() if date_match else None,
     )
 

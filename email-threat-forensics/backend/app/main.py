@@ -147,15 +147,15 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
     ]
 
     # Rule-based threat scoring from extraction indicators
-    mismatch_count = sum(1 for u in raw_urls if u.get("is_mismatch"))
-    redirector_count = sum(1 for u in raw_urls if u.get("is_redirector"))
-    userinfo_count = sum(1 for u in raw_urls if u.get("has_userinfo"))
+    unique_redirectors = len({u["destination"] for u in raw_urls if u.get("is_redirector")})
+    unique_mismatches = len({u["destination"] for u in raw_urls if u.get("is_mismatch")})
+    unique_userinfo = len({u["destination"] for u in raw_urls if u.get("has_userinfo")})
 
     calculated_risk = min(
         100,
-        (mismatch_count * 35)
-        + (redirector_count * 20)
-        + (userinfo_count * 25)
+        (unique_mismatches * 35)
+        + (unique_redirectors * 20)
+        + (unique_userinfo * 25)
         + (len(hidden_chunks) * 20),
     )
 
