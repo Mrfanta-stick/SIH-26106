@@ -1,14 +1,14 @@
-""""
+"""
 purpose:
     extract bytes from base64 or text from Quoted-printable
     extract anchor and link from html (check if they are mis-matched)
     find and extract hidden text
 """
+
 import re
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
-
 
 
 def detect_zero_font_obfuscation(html_content: str) -> Tuple[str, List[str]]:
@@ -123,122 +123,3 @@ def extract_and_analyze_urls(html_content: str) -> List[Dict[str, Any]]:
         })
 
     return suspicious_urls
-
-
-
-
-#--------------------------- testing code -------------------------------
-def test_url_extractor():
-    html_content = """
-    <html>
-        <body>
-
-            <!-- 1. Normal matching URL -->
-            <p>Normal link:</p>
-            <a href="https://google.com/login">
-                https://google.com/login
-            </a>
-
-            <!-- 2. Anchor/domain mismatch -->
-            <p>Phishing mismatch:</p>
-            <a href="http://194.26.29.112/auth.php">
-                https://microsoft.com/login
-            </a>
-
-            <!-- 3. Another mismatch -->
-            <p>Another mismatch:</p>
-            <a href="https://evil.com/steal">
-                https://google.com
-            </a>
-
-            <!-- 4. Normal text anchor -->
-            <p>Normal text anchor:</p>
-            <a href="https://example.com/login">
-                Click here to login
-            </a>
-
-            <!-- 5. www vs non-www -->
-            <p>WWW test:</p>
-            <a href="https://www.google.com/login">
-                https://google.com/login
-            </a>
-
-            <!-- 6. @ / userinfo deception -->
-            <p>Userinfo deception:</p>
-            <a href="https://google.com@example.com/login">
-                https://google.com@example.com/login
-            </a>
-
-            <!-- 7. Username + password -->
-            <p>Userinfo with password:</p>
-            <a href="******example.com/login">
-                ******example.com/login
-            </a>
-
-        </body>
-    </html>
-    """
-
-    result = extract_and_analyze_urls(html_content)
-
-    print("\n========== URL ANALYSIS ==========")
-
-    for i, item in enumerate(result, start=1):
-        print(f"\nURL {i}")
-        print(f"Anchor       : {item['anchor_text']}")
-        print(f"Destination  : {item['destination']}")
-        print(f"Mismatch     : {item['is_mismatch']}")
-
-        # Only if your function includes this field
-        if "has_userinfo" in item:
-            print(f"Userinfo     : {item['has_userinfo']}")
-
-
-def test_zero_font_obfuscation():
-    html_content = """
-    <html>
-        <body>
-
-            <p>This is visible text.</p>
-
-            <span style="font-size: 0">
-                Hidden zero font text
-            </span>
-
-            <span style="display: none">
-                Hidden display none text
-            </span>
-
-            <span style="visibility: hidden">
-                Hidden visibility text
-            </span>
-
-            <span style="color: transparent">
-                Hidden transparent text
-            </span>
-
-            <span style="opacity: 0">
-                Hidden opacity text
-            </span>
-
-            <p>This text is also visible.</p>
-
-        </body>
-    </html>
-    """
-
-    visible_text, hidden_cues = detect_zero_font_obfuscation(html_content)
-
-    print("\n========== HIDDEN TEXT ANALYSIS ==========")
-
-    print("\nVisible text:")
-    print(visible_text)
-
-    print("\nHidden text:")
-    for i, text in enumerate(hidden_cues, start=1):
-        print(f"{i}. {text}")
-
-
-if __name__ == "__main__":
-    test_url_extractor()
-    test_zero_font_obfuscation()
