@@ -4,13 +4,7 @@ purpose:
     extract anchor and link from html (check if they are mis-matched)
     find and extract hidden text
 """
-
-import json
-import html
 import re
-import base64
-import binascii
-import quopri
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
@@ -24,6 +18,9 @@ def detect_zero_font_obfuscation(html_content: str) -> Tuple[str, List[str]]:
 
     >> RETURN VALUE:
                  (Visible_text, list of non-visible strings)
+
+    (TODO):
+    1) tag.decompose will cause problems with nested tags
     """
     if not html_content:
         return "", []
@@ -33,11 +30,11 @@ def detect_zero_font_obfuscation(html_content: str) -> Tuple[str, List[str]]:
 
     # CSS properties commonly used to hide text from users while exposing it to scanners
     hidden_style_patterns = [
-        'font-size: 0', 'font-size:0',
-        'display: none', 'display:none',
-        'visibility: hidden', 'visibility:hidden',
-        'color: transparent', 'color:transparent',
-        'opacity: 0', 'opacity:0'
+    r'font-size\s*:\s*0(?:px|pt|em|rem)?',
+    r'display\s*:\s*none',
+    r'visibility\s*:\s*hidden',
+    r'color\s*:\s*transparent',
+    r'opacity\s*:\s*0(?:\.0*)?',
     ]
 
     # Find and evaluate all tags containing a 'style' attribute
@@ -45,7 +42,7 @@ def detect_zero_font_obfuscation(html_content: str) -> Tuple[str, List[str]]:
         style_attr = tag['style'].lower()
 
         # Check if the inline style matches any obfuscation pattern
-        if any(pattern in style_attr for pattern in hidden_style_patterns):
+        if any(re.search(pattern, style_attr) for pattern in hidden_style_patterns):
             hidden_text = tag.get_text(strip=True)
             if hidden_text:
                 extracted_hidden_cues.append(hidden_text)
@@ -55,41 +52,29 @@ def detect_zero_font_obfuscation(html_content: str) -> Tuple[str, List[str]]:
 
     # Extract the remaining visible text, using spaces to separate block elements
     visible_text_only = soup.get_text(separator=' ', strip=True)
-
-    # Clean up excessive whitespace created by extraction
     visible_text_only = re.sub(r'\s+', ' ', visible_text_only)
 
     return visible_text_only, extracted_hidden_cues
 
 
 
-def extract_and_analyze_urls(html_content: str) -> str:
+def extract_and_analyze_urls(html_content: str) -> List[Dict[str, Any]]:
     """
     Extracts <a> tags and compares visible anchor text against
     the actual href destination.
 
-    Returns:
-    [
-        {
-            "anchor_text": "...",
-            "destination": "...",
-            "is_mismatch": True
-        }
-    ]
-    tags to parse:
-        -> <a></a>
-        -> <base></base> (TODO)
-
-    (TODO : detect them as well)
-    links might do something like this:
-            https://google.com@example.com : this will take you to example.com instead of google.com
+    (TODO):
+    1) tags to parse:
+           -> <a></a>
+           -> <base></base>
+    2) detect if the link is legitimate, i.e., it should take where the email is saying to
     """
 
     if not html_content:
         return []
 
     soup = BeautifulSoup(html_content, "html.parser")
-    return_string = "\"suspicious_urls\": ["
+    suspicious_urls = []
 
     for a_tag in soup.find_all("a", href=True):
 
@@ -99,21 +84,17 @@ def extract_and_analyze_urls(html_content: str) -> str:
 
         # Only perform mismatch analysis if the visible text
         # looks like a URL/domain.
-        if (
-            re.match(r"^https?://", anchor_text, re.IGNORECASE)
-            or re.match(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", anchor_text)
-        ):
-            normalized_anchor = (
-                anchor_text
-                if "://" in anchor_text
-                else f"http://{anchor_text}"
-            )
+        if (re.match(r"^https?://", anchor_text, re.IGNORECASE) or re.match(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", anchor_text)):
+
+            normalized_anchor = (anchor_text if "://" in anchor_text else f"http://{anchor_text}")
 
             try:
-                anchor_domain = urlparse(normalized_anchor).netloc.lower()
-                dest_domain = urlparse(destination).netloc.lower()
+                anchor_parsed = urlparse(normalized_anchor)
+                dest_parsed = urlparse(destination)
 
-                # Remove www.
+                anchor_domain = (anchor_parsed.hostname or "").lower()
+                dest_domain = (dest_parsed.hostname or "").lower()
+
                 anchor_domain = anchor_domain.removeprefix("www.")
                 dest_domain = dest_domain.removeprefix("www.")
 
@@ -123,50 +104,129 @@ def extract_and_analyze_urls(html_content: str) -> str:
             except ValueError:
                 pass
 
-            is_mismatch_string = "true" if is_mismatch else "false"
-            return_string += f"{{\"anchor_text\": \"{anchor_text}\", \"destination\": \"{destination}\", \"is_mismatch\": {is_mismatch_string}}},"
+            suspicious_urls.append({
+                "anchor_text": anchor_text,
+                "destination": destination,
+                "is_mismatch": is_mismatch
+            })
 
-    return_string += "]"
-    return return_string
+    return suspicious_urls
 
 
 
 
 #--------------------------- testing code -------------------------------
-
 def test_url_extractor():
-    html = """
+    html_content = """
     <html>
         <body>
 
+            <!-- 1. Normal matching URL -->
             <p>Normal link:</p>
             <a href="https://google.com/login">
                 https://google.com/login
             </a>
 
+            <!-- 2. Anchor/domain mismatch -->
             <p>Phishing mismatch:</p>
             <a href="http://194.26.29.112/auth.php">
                 https://microsoft.com/login
             </a>
 
+            <!-- 3. Another mismatch -->
             <p>Another mismatch:</p>
             <a href="https://evil.com/steal">
                 https://google.com
             </a>
 
-            <p>Non-URL anchor text:</p>
+            <!-- 4. Normal text anchor -->
+            <p>Normal text anchor:</p>
             <a href="https://example.com/login">
                 Click here to login
+            </a>
+
+            <!-- 5. www vs non-www -->
+            <p>WWW test:</p>
+            <a href="https://www.google.com/login">
+                https://google.com/login
+            </a>
+
+            <!-- 6. @ / userinfo deception -->
+            <p>Userinfo deception:</p>
+            <a href="https://google.com@example.com/login">
+                https://google.com@example.com/login
+            </a>
+
+            <!-- 7. Username + password -->
+            <p>Userinfo with password:</p>
+            <a href="https://google.com:secret@example.com/login">
+                https://google.com:secret@example.com/login
             </a>
 
         </body>
     </html>
     """
 
-    result = extract_and_analyze_urls(html)
+    result = extract_and_analyze_urls(html_content)
 
-    print(result)
+    print("\n========== URL ANALYSIS ==========")
+
+    for i, item in enumerate(result, start=1):
+        print(f"\nURL {i}")
+        print(f"Anchor       : {item['anchor_text']}")
+        print(f"Destination  : {item['destination']}")
+        print(f"Mismatch     : {item['is_mismatch']}")
+
+        # Only if your function includes this field
+        if "has_userinfo" in item:
+            print(f"Userinfo     : {item['has_userinfo']}")
+
+
+def test_zero_font_obfuscation():
+    html_content = """
+    <html>
+        <body>
+
+            <p>This is visible text.</p>
+
+            <span style="font-size: 0">
+                Hidden zero font text
+            </span>
+
+            <span style="display: none">
+                Hidden display none text
+            </span>
+
+            <span style="visibility: hidden">
+                Hidden visibility text
+            </span>
+
+            <span style="color: transparent">
+                Hidden transparent text
+            </span>
+
+            <span style="opacity: 0">
+                Hidden opacity text
+            </span>
+
+            <p>This text is also visible.</p>
+
+        </body>
+    </html>
+    """
+
+    visible_text, hidden_cues = detect_zero_font_obfuscation(html_content)
+
+    print("\n========== HIDDEN TEXT ANALYSIS ==========")
+
+    print("\nVisible text:")
+    print(visible_text)
+
+    print("\nHidden text:")
+    for i, text in enumerate(hidden_cues, start=1):
+        print(f"{i}. {text}")
 
 
 if __name__ == "__main__":
     test_url_extractor()
+    test_zero_font_obfuscation()
