@@ -1,0 +1,54 @@
+Received: from internal.victim-corp.local (10.0.5.50)
+ by mailstore.victim-corp.local (10.0.5.100) with ESMTP id FINAL_HOP;
+ Sat, 29 Aug 2026 15:30:45 -0400 (EDT)
+Received: from gateway.victim-corp.com (gateway.victim-corp.com [198.51.100.12])
+ by internal.victim-corp.local (10.0.5.50) with ESMTPS id INBOUND_33;
+ Sat, 29 Aug 2026 15:30:40 -0400 (EDT)
+Received: from offshore-relay.ru (offshore-relay.ru [193.189.100.22])
+ by gateway.victim-corp.com (198.51.100.12) with ESMTP id THREAT_99;
+ Sat, 29 Aug 2026 15:30:35 -0400 (EDT)
+Received: from compromised-server.de (compromised.de [144.76.10.10])
+ by offshore-relay.ru (193.189.100.22) with SMTP id RELAY_2;
+ Sat, 29 Aug 2026 15:30:30 -0400 (EDT)
+Received: from attacker-laptop (unknown [185.220.101.5])
+ by compromised-server.de (144.76.10.10) with SMTP id RELAY_1;
+ Sat, 29 Aug 2026 15:30:20 -0400 (EDT)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=trusted-vendor.com;
+ s=forged2026; t=1787832075; h=from:subject:to;
+ bh=FakeHashValueForTestingPurposesOnly=;
+ b=FakeSignatureForTestingPurposesOnly
+Reply-To: "Vendor Support" <attacker_drop_001@protonmail.com>
+Date: Sat, 29 Aug 2026 15:30:20 -0400
+From: "Vendor Support" <admin@trusted-vendor.com>
+To: finance-team@victim-corp.com
+Message-ID: <evil-phish-999@attacker-laptop>
+Subject: CRITICAL: Q3 Earnings Report & Patch
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="====BOUNDARY_12345_EVIL===="
+
+--====BOUNDARY_12345_EVIL====
+Content-Type: text/plain; charset="utf-8"
+
+Team,
+
+Please review the attached Q3 earnings report immediately.
+Also, IT requires you to run the attached VBS patch to secure your Outlook client.
+
+Regards,
+Vendor Support
+
+--====BOUNDARY_12345_EVIL====
+Content-Type: application/vnd.ms-word.document.macroEnabled.12; name="URGENT_Q3_REPORT.docm"
+Content-Disposition: attachment; filename="URGENT_Q3_REPORT.docm"
+Content-Transfer-Encoding: base64
+
+WDVPIVAlQEFQWzRcUFpYNTQoUF4pN0NDKTd9JEVJQ0FSLVNUQU5EQVJELUFOVElWSVJVUy1URVNU
+LUZJTEUhJEgrSCo=
+--====BOUNDARY_12345_EVIL====
+Content-Type: application/x-vbs; name="outlook_security_patch.vbs"
+Content-Disposition: attachment; filename="outlook_security_patch.vbs"
+Content-Transfer-Encoding: base64
+
+V2FybmluZzogVGhpcyBpcyBhIHNpbXVsYXRlZCBtYWxpY2lvdXMgc2NyaXB0IHRoYXQgZG93bmxv
+YWRzIHJhbnNvbXdhcmUu
+--====BOUNDARY_12345_EVIL====--

@@ -1,0 +1,30 @@
+Received: from av-scanner.victim-company.com ([192.168.100.11])
+ by internal-mail.victim-company.com ([192.168.100.12]) with SMTP id final;
+ Fri, 28 Aug 2026 10:00:11 -0700 (PDT)
+Received: from av-scanner.victim-company.com ([192.168.100.11])
+ by av-scanner.victim-company.com ([192.168.100.11]) with ESMTP id xyz2;
+ Fri, 28 Aug 2026 10:00:10 -0700 (PDT)
+Received: from mx.victim-company.com ([192.168.100.10])
+ by av-scanner.victim-company.com ([192.168.100.11]) with SMTP id xyz;
+ Fri, 28 Aug 2026 10:00:06 -0700 (PDT)
+Received: from sketchy-relay.com (sketchy-relay.com. [104.23.45.67])
+ by mx.victim-company.com with ESMTPS id abc123def
+ for <admin@victim-company.com> (version=TLS1_3 cipher=TLS_AES);
+ Fri, 28 Aug 2026 10:00:05 -0700 (PDT)
+Received: from attacker-pc (unknown [192.168.1.5])
+ by sketchy-relay.com ([104.23.45.67]) with SMTP id 001;
+ Fri, 28 Aug 2026 10:00:00 -0700 (PDT)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=sketchy-relay.com;
+ s=phishkey2026; t=1787832075; h=from:subject:to;
+ bh=FelwEQUhSPs5Ny4DKEsBKQSMuWREsr6lumWvI6dp9L8=;
+ b=W8mDxyNCXssIhR9T
+Reply-To: "Secret Attacker Inbox" <attacker-wallet-44@yandex.com>
+Date: Fri, 28 Aug 2026 10:00:00 -0700 (PDT)
+From: "Urgent IT Update" <admin-update@sketchy-relay.com>
+To: admin@victim-company.com
+Message-ID: <987654321@sketchy-relay.com>
+Subject: URGENT: Update your email password
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Please click the link below to verify your account immediately.
