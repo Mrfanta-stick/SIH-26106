@@ -1,0 +1,40 @@
+From: "Vendor Support" <attacker_drop_001@protonmail.com>
+Reply-To: "Vendor Support" <attacker_drop_001@protonmail.com>
+To: "Security Operations" <secops@victim-corp.com>
+Subject: URGENT: Q3 Vendor Compliance and Security Patch Required
+Date: Sun, 30 Aug 2026 12:00:00 +0000
+Message-ID: <forensic-master-2026-eval-9988@secure-gateway.victim-corp.com>
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=trusted-vendor.com; s=forged2026; bh=275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f; h=From:To:Subject:Date; b=fake_signature_data_for_testing_purposes_only==
+Received: from mailstore.victim-corp.local (10.0.0.50) by internal.victim-corp.local (10.0.0.10) with ESMTP id mta5; Sun, 30 Aug 2026 12:00:05 +0000
+Received: from internal.victim-corp.local (10.0.0.10) by gateway.victim-corp.com (192.0.2.1) with ESMTPS id mta4; Sun, 30 Aug 2026 12:00:00 +0000
+Received: from gateway.victim-corp.com (192.0.2.1) by offshore-relay.ru (203.0.113.50) with ESMTP id mta3; Sun, 30 Aug 2026 11:59:55 +0000
+Received: from offshore-relay.ru (203.0.113.50) by compromised-server.de (198.51.100.20) with SMTP id mta1; Sun, 30 Aug 2026 11:59:45 +0000
+Received: from attacker-laptop (198.51.100.20) by localhost with SMTP id mta0; Sun, 30 Aug 2026 11:59:45 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUNDARY_FORENSIC_TEST_123"
+
+--BOUNDARY_FORENSIC_TEST_123
+Content-Type: text/plain; charset="UTF-8"
+
+Please review the attached Q3 vendor compliance report and execute the security patch script immediately to prevent account suspension.
+
+Regards,
+Vendor Support Team
+
+--BOUNDARY_FORENSIC_TEST_123
+Content-Type: application/vnd.ms-word.document.macroenabled.12; name="URGENT_Q3_REPORT.docm"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="URGENT_Q3_REPORT.docm"
+
+UEsDBBQACAgIAAAAIQAEAAAAAAAAAAAAAAAJAAAAQmFzZURhdGFVcmlndVJnQkFBRWFtQUFF
+aEFBQUFCd0FFQUFBQUpZQQ==
+
+--BOUNDARY_FORENSIC_TEST_123
+Content-Type: application/x-vbs; name="outlook_security_patch.vbs"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="outlook_security_patch.vbs"
+
+V0NTSFNJRDIwMjZNb2NramF2YXNjcmlwdGV4ZWN1dGlvblZlcjFVbHRpbWF0ZVNlY3VyZVBl
+bmRhdDEwMA==
+
+--BOUNDARY_FORENSIC_TEST_123--
