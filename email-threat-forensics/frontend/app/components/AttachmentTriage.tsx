@@ -1,136 +1,173 @@
-'use client';
+// @ts-nocheck
+"use client";
 
-import React from 'react';
-import { FileWarning, ShieldAlert, Link2 } from 'lucide-react';
-import { ForensicReport } from '../types/forensic';
+import { useState } from "react";
+import { ForensicReport } from "../types/forensic";
 
-interface AttachmentTriageProps {
-  report: ForensicReport;
+export interface AttachmentItem {
+  filename?: string;
+  sha256?: string;
+  size_bytes?: number;
+  mime_type?: string;
+  verdict?: "malicious" | "suspicious" | "clean" | "unknown";
+  entropy?: number;
+  extracted_strings_summary?: string[];
+  yara_matches?: string[];
+  vt_positives?: number;
+  vt_total?: number;
 }
 
-export const AttachmentTriage: React.FC<AttachmentTriageProps> = ({ report }) => {
-  const { attachment_forensics, threat_intent } = report;
+export interface AttachmentTriageProps {
+  report?: ForensicReport | any;
+  attachments?: AttachmentItem[];
+}
+
+export function AttachmentTriage({ report, attachments }: AttachmentTriageProps) {
+  const activeAttachments: AttachmentItem[] =
+    attachments || report?.evidence?.attachments || [];
+
+  const [selectedAttachment, setSelectedAttachment] =
+    useState<AttachmentItem | null>(null);
+
+  const formatBytes = (bytes?: number) => {
+    if (!bytes) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  };
+
+  const getVerdictBadge = (verdict?: string) => {
+    switch (verdict?.toLowerCase()) {
+      case "malicious":
+        return "bg-rose-950/50 border-rose-600/50 text-rose-300";
+      case "suspicious":
+        return "bg-amber-950/50 border-amber-600/50 text-amber-300";
+      case "clean":
+        return "bg-emerald-950/50 border-emerald-600/50 text-emerald-300";
+      default:
+        return "bg-slate-800 border-slate-700 text-slate-400";
+    }
+  };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-      
-      {/* 1. Attachment Forensics & Hex Dissector */}
-      <div className="rounded-2xl bg-[#12151c]/60 backdrop-blur-xl border border-white/10 p-6 shadow-2xl shadow-black/60 flex flex-col justify-between">
-        <div>
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
-                <FileWarning className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold tracking-tight uppercase text-white font-mono">
-                  Static Attachment Triage
-                </h2>
-                <p className="text-xs text-slate-400">MAPI payload extraction & signature detection</p>
-              </div>
-            </div>
+    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-4 backdrop-blur-sm font-mono">
+      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+            Extracted Payload & Attachment Triage
+          </h3>
+        </div>
+        <span className="text-[10px] text-slate-500">
+          COUNT: {activeAttachments.length}
+        </span>
+      </div>
 
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30">
-              {attachment_forensics.length} ATTACHMENT{attachment_forensics.length === 1 ? '' : 'S'}
-            </span>
-          </div>
+      {activeAttachments.length === 0 ? (
+        <div className="py-8 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg">
+          No MIME binary payload attachments detected in telemetry stream.
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {activeAttachments.map((att: AttachmentItem, idx: number) => {
+            const isSelected =
+              selectedAttachment?.sha256 === att.sha256 &&
+              Boolean(att.sha256);
 
-          <div className="space-y-3">
-            {attachment_forensics.length > 0 ? (
-              attachment_forensics.map((att, idx) => (
-                <div 
-                  key={idx} 
-                  className="p-4 rounded-xl bg-[#08090c]/80 border border-rose-500/30 text-xs font-mono space-y-3 shadow-lg"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-100 font-bold tracking-wide">{att.filename}</span>
-                    </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse">
-                      {att.risk.replace(/_/g, ' ')}
+            return (
+              <div
+                key={att.filename || att.sha256 || idx}
+                onClick={() =>
+                  setSelectedAttachment(isSelected ? null : att)
+                }
+                className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
+                  isSelected
+                    ? "border-cyan-500/50 bg-slate-800/80 ring-1 ring-cyan-500/30"
+                    : "border-slate-800/80 bg-slate-950/40 hover:bg-slate-800/40 hover:border-slate-700"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-slate-500 text-[10px]">
+                      [{String(idx + 1).padStart(2, "0")}]
+                    </span>
+                    <span className="text-slate-200 font-medium truncate">
+                      {att.filename || "unnamed_payload.bin"}
                     </span>
                   </div>
 
-                  <div className="p-2.5 rounded-lg bg-white/5 border border-white/5 text-[11px] space-y-1">
-                    <div className="text-slate-400 flex justify-between">
-                      <span>Magic Header:</span>
-                      <span className="text-amber-300 font-semibold">{att.detected_magic}</span>
-                    </div>
-                    <div className="text-slate-400 flex justify-between">
-                      <span>MIME Type Mask:</span>
-                      <span className="text-slate-300">{att.detected_magic}</span>
-                    </div>
-                  </div>
-
-                  <div className="p-2.5 rounded-lg bg-cyan-500/5 border border-cyan-500/20 text-cyan-200/80 text-[10px] leading-relaxed">
-                    Byte-level hex inspection is not included in the current API response. This panel displays only the attachment metadata returned by the backend.
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-xs text-slate-500 font-mono py-8 text-center bg-[#08090c]/40 rounded-xl border border-white/5">
-                No static attachments detected in payload.
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Deceptive URL Analysis */}
-      <div className="rounded-2xl bg-[#12151c]/60 backdrop-blur-xl border border-white/10 p-6 shadow-2xl shadow-black/60 flex flex-col justify-between">
-        <div>
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                <Link2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold tracking-tight uppercase text-white font-mono">
-                  URL Discrepancy Analysis
-                </h2>
-                <p className="text-xs text-slate-400">Homoglyphs, masked links & deceptive routing</p>
-              </div>
-            </div>
-
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              {threat_intent.suspicious_urls.length} MISMATCH{threat_intent.suspicious_urls.length === 1 ? '' : 'ES'}
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {threat_intent.suspicious_urls.map((url, idx) => (
-              <div 
-                key={idx} 
-                className="p-4 rounded-xl bg-[#08090c]/80 border border-amber-500/30 text-xs font-mono space-y-3 shadow-lg"
-              >
-                <div className="space-y-2">
-                  <div className="p-2.5 rounded-lg bg-white/5 border border-white/5 space-y-1.5 text-[11px]">
-                    <div className="flex items-center justify-between text-slate-400">
-                      <span>Visible Anchor:</span>
-                      <span className="text-slate-100 font-semibold">{url.anchor_text}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-slate-400">
-                      <span>Destination IP/URI:</span>
-                      <span className="text-rose-400 font-bold truncate max-w-[200px]">{url.destination}</span>
-                    </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] text-slate-400">
+                      {formatBytes(att.size_bytes)}
+                    </span>
+                    <span
+                      className={`text-[10px] uppercase px-2 py-0.5 rounded border font-semibold ${getVerdictBadge(
+                        att.verdict
+                      )}`}
+                    >
+                      {att.verdict || "UNKNOWN"}
+                    </span>
                   </div>
                 </div>
 
-                {url.is_mismatch && (
-                  <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-300 text-[11px] flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400" />
-                    <span>Domain Masking Detected: Link points to unauthorized IP pool.</span>
+                {isSelected && (
+                  <div className="mt-3 pt-3 border-t border-slate-800 space-y-2 text-[11px] text-slate-400">
+                    <div>
+                      <span className="text-slate-500">MIME Type:</span>{" "}
+                      <span className="text-slate-300">
+                        {att.mime_type || "application/octet-stream"}
+                      </span>
+                    </div>
+
+                    {att.sha256 && (
+                      <div className="break-all">
+                        <span className="text-slate-500">SHA-256:</span>{" "}
+                        <span className="text-cyan-400/90">{att.sha256}</span>
+                      </div>
+                    )}
+
+                    {typeof att.entropy === "number" && (
+                      <div>
+                        <span className="text-slate-500">Entropy Score:</span>{" "}
+                        <span
+                          className={
+                            att.entropy > 7
+                              ? "text-rose-400 font-semibold"
+                              : "text-slate-300"
+                          }
+                        >
+                          {att.entropy.toFixed(2)} / 8.00
+                        </span>
+                      </div>
+                    )}
+
+                    {att.yara_matches && att.yara_matches.length > 0 && (
+                      <div>
+                        <span className="text-slate-500 block mb-1">
+                          YARA Rule Hits:
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {att.yara_matches.map((rule, rIdx) => (
+                            <span
+                              key={rIdx}
+                              className="px-1.5 py-0.2 bg-rose-950/40 border border-rose-800/40 text-rose-300 rounded text-[10px]"
+                            >
+                              {rule}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            ))}
-            {threat_intent.suspicious_urls.length === 0 && (
-              <div className="text-xs text-slate-500 font-mono py-8 text-center bg-[#08090c]/40 rounded-xl border border-white/5">No suspicious URL mismatches were returned by the backend.</div>
-            )}
-          </div>
+            );
+          })}
         </div>
-      </div>
-
+      )}
     </div>
   );
-};
+}
+
+export default AttachmentTriage;

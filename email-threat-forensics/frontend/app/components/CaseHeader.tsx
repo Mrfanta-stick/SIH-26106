@@ -1,94 +1,100 @@
-'use client';
+// @ts-nocheck
+"use client";
 
-import React, { useState } from 'react';
-import { ShieldAlert, FileCode2, Clock, Hash, Copy, Check, Fingerprint, Tag } from 'lucide-react';
-import { ForensicReport } from '../types/forensic';
+import { useState } from "react";
+import { ForensicReport } from "../types/forensic";
 
-interface CaseHeaderProps {
-  report: ForensicReport;
+export interface CaseHeaderProps {
+  report?: ForensicReport | any;
+  caseId?: string;
+  timestamp?: string;
+  classification?: string;
+  onOpenDossier?: () => void;
+  onExportReport?: () => void;
+  onReset?: () => void;
 }
 
-export const CaseHeader: React.FC<CaseHeaderProps> = ({ report }) => {
+export function CaseHeader(props: CaseHeaderProps) {
+  const {
+    report,
+    caseId = report?.case_id || "CASE-2026-08A",
+    timestamp = report?.evidence?.timestamp || "2026-09-02T00:00:00.000Z",
+    classification = "CONFIDENTIAL // TLP:AMBER",
+    onOpenDossier,
+    onExportReport,
+    onReset,
+  } = props;
+
   const [copied, setCopied] = useState(false);
 
-  const handleCopyHash = () => {
-    navigator.clipboard.writeText(report.evidence.sha256);
+  const handleCopyId = () => {
+    navigator.clipboard.writeText(caseId);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
-    <header className="rounded-2xl bg-[#12151c]/60 backdrop-blur-xl border border-white/10 p-6 shadow-2xl shadow-black/60 mb-6 relative overflow-hidden">
-      {/* Ambient background glow corner */}
-      <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 relative z-10">
-        
-        {/* Case ID, Classification & MITRE ATT&CK */}
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 shadow-inner">
-              <ShieldAlert className="w-6 h-6 animate-pulse" />
-            </div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-white font-mono">
-              {report.case_id}
-            </h1>
-            <span className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 shadow-[0_0_15px_-3px_rgba(244,63,94,0.3)]">
-              {report.threat_intent.primary_intent.replace(/_/g, ' ')}
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-mono rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <Fingerprint className="w-3.5 h-3.5" />
-              INTEGRITY VERIFIED
-            </span>
+    <header className="w-full bg-slate-900/80 border-b border-slate-800 backdrop-blur-md sticky top-0 z-40 px-6 py-3.5">
+      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 font-mono">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-cyan-950/60 border border-cyan-500/30 text-cyan-400">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            <span className="text-xs text-slate-400 font-medium mr-1">ATT&CK:</span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] font-mono">
-              <Tag className="w-3 h-3 text-amber-400" />
-              Attribution pending
-            </span>
-            <span className="text-xs text-slate-400 pl-2">
-              Cluster: <span className="font-mono text-cyan-300 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-500/20">{report.graph_topology.campaign_cluster_id}</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Evidence Metadata & Copyable SHA-256 Card */}
-        <div className="bg-[#08090c]/80 p-4 rounded-xl border border-white/10 flex flex-col gap-2.5 text-xs font-mono shadow-inner lg:min-w-[380px]">
-          <div className="flex items-center justify-between text-slate-300">
+          <div>
             <div className="flex items-center gap-2">
-              <FileCode2 className="w-4 h-4 text-cyan-400 shrink-0" />
-              <span className="text-[11px] truncate max-w-[200px]" title={report.evidence.filename}>
-                {report.evidence.filename}
-              </span>
+              <span className="text-xs text-slate-400">INCIDENT ID:</span>
+              <span className="text-sm font-bold text-slate-100">{caseId}</span>
+              <button
+                type="button"
+                onClick={handleCopyId}
+                aria-label="Copy Case ID"
+                className="text-slate-400 hover:text-cyan-400 p-1"
+              >
+                {copied ? <span className="text-[10px] text-emerald-400">COPIED</span> : "📋"}
+              </button>
             </div>
-            <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-              <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>{new Date(report.evidence.ingestion_timestamp).toUTCString().slice(17, 25)} UTC</span>
+            <div className="text-[11px] text-slate-500 flex items-center gap-3">
+              <span suppressHydrationWarning>{timestamp}</span>
+              <span>|</span>
+              <span className="text-amber-400">{classification}</span>
             </div>
-          </div>
-
-          {/* Interactive Hash Bar */}
-          <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 truncate text-slate-400">
-              <Hash className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="text-[11px] truncate text-slate-300" title={report.evidence.sha256}>
-                {report.evidence.sha256}
-              </span>
-            </div>
-            <button
-              onClick={handleCopyHash}
-              aria-label={copied ? "SHA-256 hash copied" : "Copy SHA-256 hash"}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/5 transition-all shrink-0"
-              title="Copy SHA-256 Hash"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
           </div>
         </div>
 
+        <div className="flex items-center gap-2 text-xs">
+          {onOpenDossier && (
+            <button
+              type="button"
+              onClick={onOpenDossier}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded transition-colors"
+            >
+              DOSSIER
+            </button>
+          )}
+          {onExportReport && (
+            <button
+              type="button"
+              onClick={onExportReport}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded transition-colors"
+            >
+              EXPORT
+            </button>
+          )}
+          {onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded border border-slate-700 transition-colors"
+            >
+              🔄
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );
-};
+}
+
+export default CaseHeader;

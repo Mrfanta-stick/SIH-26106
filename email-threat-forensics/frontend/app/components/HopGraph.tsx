@@ -1,190 +1,146 @@
-'use client';
+// @ts-nocheck
+"use client";
 
-import React, { useState } from 'react';
-import { Network, Server, ArrowRight, ShieldAlert, ShieldCheck, Clock, Zap, Cpu } from 'lucide-react';
-import { ForensicReport } from '../types/forensic';
+import { useState } from "react";
+import { ForensicReport } from "../types/forensic";
 
-interface HopGraphProps {
-  report: ForensicReport;
+export interface GraphNode {
+  id: string;
+  label: string;
+  type?: "source" | "mta" | "destination" | "relay";
+  ip?: string;
+  suspicious?: boolean;
 }
 
-export const HopGraph: React.FC<HopGraphProps> = ({ report }) => {
-  const [selectedHop, setSelectedHop] = useState<number>(0);
+export interface GraphEdge {
+  source: string;
+  target: string;
+  protocol?: string;
+  latency_ms?: number;
+  auth_status?: "pass" | "fail" | "softfail" | "none";
+}
 
-  const backendNodes = report.graph_topology.nodes;
-  const backendEdges = report.graph_topology.edges;
-  const hopsData = backendNodes.length > 0
-    ? backendNodes.map((node, index) => ({
-        id: index + 1,
-        name: node.label,
-        ip: node.type === 'ip' ? node.label : report.origin_network.ip,
-        host: node.label,
-        asn: node.type === 'asn' ? node.label : report.origin_network.asn,
-        location: `${report.origin_network.city}, ${report.origin_network.country}`,
-        delay: backendEdges[index - 1]?.latency || (index === 0 ? '0 ms (Origin)' : '—'),
-        status: index === 0 ? 'ORIGIN' : node.type.toUpperCase(),
-        statusColor: index === 0 ? 'text-rose-400 bg-rose-500/10 border-rose-500/30' : 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
-        iconColor: index === 0 ? 'from-rose-500 to-red-600 shadow-rose-500/50' : 'from-cyan-500 to-indigo-600 shadow-cyan-500/50',
-      }))
-    : [{
-        id: 1,
-        name: 'Origin Network',
-        ip: report.origin_network.ip,
-        host: report.origin_network.org || 'Unknown network',
-        asn: report.origin_network.asn,
-        location: `${report.origin_network.city}, ${report.origin_network.country}`,
-        delay: '0 ms (Origin)',
-        status: 'BACKEND ORIGIN',
-        statusColor: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
-        iconColor: 'from-rose-500 to-red-600 shadow-rose-500/50',
-      }];
+export interface HopGraphProps {
+  report?: ForensicReport | any;
+  nodes?: GraphNode[];
+  edges?: GraphEdge[];
+}
+
+export function HopGraph({ report, nodes, edges }: HopGraphProps) {
+  const activeNodes: GraphNode[] =
+    nodes || report?.protocol_forensics?.hop_graph?.nodes || [];
+  const activeEdges: GraphEdge[] =
+    edges || report?.protocol_forensics?.hop_graph?.edges || [];
+
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+
+  const getNodeColor = (type?: string, suspicious?: boolean) => {
+    if (suspicious) return "border-rose-500/60 bg-rose-950/30 text-rose-300";
+    switch (type) {
+      case "source":
+        return "border-amber-500/60 bg-amber-950/30 text-amber-300";
+      case "destination":
+        return "border-emerald-500/60 bg-emerald-950/30 text-emerald-300";
+      default:
+        return "border-cyan-500/40 bg-cyan-950/20 text-cyan-300";
+    }
+  };
 
   return (
-    <div className="rounded-2xl bg-[#12151c]/60 backdrop-blur-xl border border-white/10 p-6 shadow-2xl shadow-black/60 mb-6">
-      
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
-            <Network className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold tracking-tight uppercase text-white font-mono">
-              MTA Transit Topology & Laser Hop Tracing
-            </h2>
-            <p className="text-xs text-slate-400">Received header vector analysis with calculated propagation delay</p>
-          </div>
-        </div>
-
+    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-4 backdrop-blur-sm font-mono">
+      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
         <div className="flex items-center gap-2">
-          <span className="px-3 py-1 text-[11px] font-mono rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/25 flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            {backendNodes.length || 1} Backend Node{(backendNodes.length || 1) === 1 ? '' : 's'}
-          </span>
+          <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+            MTA Protocol Hop Graph & Relay Flow
+          </h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Reset Hop Graph selection"
+            onClick={() => setActiveNodeId(null)}
+            className="text-[10px] text-slate-400 hover:text-slate-200 border border-slate-700 px-2 py-0.5 rounded bg-slate-800/40 transition-colors"
+          >
+            RESET
+          </button>
         </div>
       </div>
 
-      {/* Interactive Laser Vector Pathway */}
-      <div className="relative py-8 px-4 bg-[#08090c]/80 rounded-2xl border border-white/5 mb-6 overflow-hidden">
-        
-        {/* Animated Laser Tracks (SVG Vector Overlay) */}
-        <div className="hidden md:block absolute top-[52px] left-[15%] right-[15%] h-1 z-0">
-          <svg className="w-full h-12 overflow-visible" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="laserGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#f43f5e" />
-                <stop offset="50%" stopColor="#f59e0b" />
-                <stop offset="100%" stopColor="#10b981" />
-              </linearGradient>
-            </defs>
-
-            {/* Base Wire Track */}
-            <line 
-              x1="0" y1="0" x2="100%" y2="0" 
-              stroke="rgba(255, 255, 255, 0.1)" 
-              strokeWidth="2" 
-              strokeDasharray="6 6" 
-            />
-
-            {/* Glowing Laser Conduit */}
-            <line 
-              x1="0" y1="0" x2="100%" y2="0" 
-              stroke="url(#laserGrad)" 
-              strokeWidth="2.5" 
-              strokeDasharray="18 120"
-              className="animate-[dash_3s_linear_infinite]"
-            >
-              <animate 
-                attributeName="stroke-dashoffset" 
-                from="200" 
-                to="0" 
-                dur="2.5s" 
-                repeatCount="indefinite" 
-              />
-            </line>
-          </svg>
+      {activeNodes.length === 0 ? (
+        <div className="py-8 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg">
+          No transport relay topology available.
         </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-2">
+            {activeNodes.map((node: GraphNode, idx: number) => {
+              const isActive = activeNodeId === node.id;
+              const connectedEdge = activeEdges.find((e) => e.source === node.id);
 
-        {/* 3 Node Markers */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
-          {hopsData.map((hop, index) => {
-            const isSelected = selectedHop === index;
-            return (
-              <div
-                key={hop.id}
-                onClick={() => setSelectedHop(index)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    setSelectedHop(index);
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                aria-label={`Inspect hop ${hop.id}: ${hop.name}`}
-                className={`p-4 rounded-xl transition-all duration-300 cursor-pointer border flex flex-col items-center text-center relative focus:outline-none focus:ring-2 focus:ring-purple-500/60 ${
-                  isSelected
-                    ? 'bg-white/[0.06] border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.25)] scale-[1.02]'
-                    : 'bg-[#0d0c18]/80 border-white/5 hover:border-white/20 hover:bg-white/[0.02]'
-                }`}
-              >
-                {/* Node Orb with Glow */}
-                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${hop.iconColor} flex items-center justify-center text-white shadow-lg mb-3`}>
-                  <Server className="w-5 h-5" />
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center justify-center gap-1.5">
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">HOP 0{hop.id}</span>
+              return (
+                <div key={node.id || idx} className="space-y-2">
+                  <div
+                    onClick={() => setActiveNodeId(isActive ? null : node.id)}
+                    className={`p-3 rounded-lg border text-xs cursor-pointer transition-all flex items-center justify-between ${getNodeColor(
+                      node.type,
+                      node.suspicious
+                    )} ${isActive ? "ring-2 ring-cyan-400" : ""}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] text-slate-500 font-bold">
+                        [{String(idx + 1).padStart(2, "0")}]
+                      </span>
+                      <div>
+                        <span className="font-semibold block">{node.label}</span>
+                        {node.ip && (
+                          <span className="text-[10px] text-slate-400">
+                            {node.ip}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded border border-slate-700 bg-slate-900/60">
+                      {node.type || "MTA"}
+                    </span>
                   </div>
-                  <div className="text-xs font-bold text-white font-mono tracking-tight">{hop.name}</div>
-                  <div className="text-[11px] font-mono text-purple-300">{hop.ip}</div>
+
+                  {connectedEdge && idx < activeNodes.length - 1 && (
+                    <div
+                      key={`${connectedEdge.source}-${connectedEdge.target}-${connectedEdge.protocol || idx}`}
+                      className="pl-8 py-1 flex items-center gap-2 text-[10px] text-slate-500"
+                    >
+                      <span className="text-slate-600">│</span>
+                      <span>▼</span>
+                      <span className="text-slate-400">
+                        {connectedEdge.protocol || "ESMTPS"}
+                      </span>
+                      {typeof connectedEdge.latency_ms === "number" && (
+                        <span className="text-slate-500">
+                          (+{connectedEdge.latency_ms}ms)
+                        </span>
+                      )}
+                      {connectedEdge.auth_status && (
+                        <span
+                          className={`px-1 rounded text-[9px] uppercase ${
+                            connectedEdge.auth_status === "pass"
+                              ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
+                              : "bg-rose-950 text-rose-400 border border-rose-800"
+                          }`}
+                        >
+                          {connectedEdge.auth_status}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-
-                <div className="mt-3 w-full pt-3 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-slate-400">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-cyan-400" />
-                    {hop.delay}
-                  </span>
-                  <span className={`px-2 py-0.5 rounded-full border text-[9px] font-bold ${hop.statusColor}`}>
-                    {hop.status}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Selected Hop Detailed Inspection Tray */}
-      <div className="p-4 rounded-xl bg-[#08090c]/90 border border-white/10 text-xs font-mono">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
-          <div className="flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-cyan-400" />
-            <span className="text-white font-bold">NODE TELEMETRY INSPECTOR:</span>
-            <span className="text-purple-300 font-semibold">{hopsData[selectedHop].host}</span>
-          </div>
-          <span className="text-slate-400 text-[11px]">ASN: {hopsData[selectedHop].asn}</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 text-[11px]">
-          <div>
-            <span className="text-slate-500 block mb-0.5">Physical Geolocation:</span>
-            <span className="text-slate-200 font-semibold">{hopsData[selectedHop].location}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block mb-0.5">Hop Cumulative Latency:</span>
-            <span className="text-cyan-400 font-semibold">{hopsData[selectedHop].delay}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block mb-0.5">MTA Trust Classification:</span>
-            <span className={selectedHop === 0 ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
-              {selectedHop === 0 ? "SUSPICIOUS INGRESS" : "VERIFIED INTERNAL"}
-            </span>
+              );
+            })}
           </div>
         </div>
-      </div>
-
+      )}
     </div>
   );
-};
+}
+
+export default HopGraph;

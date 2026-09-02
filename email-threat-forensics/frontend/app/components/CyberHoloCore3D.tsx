@@ -1,289 +1,249 @@
-'use client';
+"use client";
 
-import React, { useEffect, useRef } from 'react';
-import { Cpu, Sparkles, RotateCcw, RotateCw, ArrowUp, ArrowDown } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback, KeyboardEvent } from "react";
 
-interface Point3D {
-  x: number;
-  y: number;
-  z: number;
+export interface CyberHoloCore3DProps {
+  threatLevel?: number;
+  statusText?: string;
 }
 
-export const CyberHoloCore3D: React.FC = () => {
+export function CyberHoloCore3D({
+  threatLevel = 45,
+  statusText = "SYSTEM MONITORED",
+}: CyberHoloCore3DProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const mouseRef = useRef({ isDown: false, lastX: 0, lastY: 0, rotX: 0.35, rotY: 0.6 });
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const [rotationX, setRotationX] = useState<number>(0.2);
+  const [rotationY, setRotationY] = useState<number>(0.3);
+  const [isAutoRotating, setIsAutoRotating] = useState<boolean>(true);
+  const isDraggingRef = useRef<boolean>(false);
+  const previousMousePositionRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const clampRotation = (val: number, min: number, max: number) => {
+    return Math.min(Math.max(val, min), max);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = 0.08;
+    switch (e.key) {
+      case "ArrowUp":
+        e.preventDefault();
+        setRotationX((prev) => clampRotation(prev - step, -1.2, 1.2));
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        setRotationX((prev) => clampRotation(prev + step, -1.2, 1.2));
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        setRotationY((prev) => prev - step);
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        setRotationY((prev) => prev + step);
+        break;
+      case " ":
+        e.preventDefault();
+        setIsAutoRotating((prev) => !prev);
+        break;
+      case "r":
+      case "R":
+        e.preventDefault();
+        setRotationX(0.2);
+        setRotationY(0.3);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    isDraggingRef.current = true;
+    previousMousePositionRef.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDraggingRef.current) return;
+    const deltaX = e.clientX - previousMousePositionRef.current.x;
+    const deltaY = e.clientY - previousMousePositionRef.current.y;
+
+    setRotationY((prev) => prev + deltaX * 0.008);
+    setRotationX((prev) => clampRotation(prev + deltaY * 0.008, -1.2, 1.2));
+
+    previousMousePositionRef.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
+  const handleMouseUpOrLeave = useCallback(() => {
+    isDraggingRef.current = false;
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     let animationFrameId: number;
-    const width = (canvas.width = 420);
-    const height = (canvas.height = 360);
-    const centerX = width / 2;
-    const centerY = height / 2;
-
-    // 1. Crystal Polyhedron Vertices (3D Octahedron / Quantum Core)
-    const coreRadius = 45;
-    const coreVertices: Point3D[] = [
-      { x: 0, y: -coreRadius * 1.3, z: 0 },
-      { x: coreRadius, y: 0, z: 0 },
-      { x: 0, y: 0, z: coreRadius },
-      { x: -coreRadius, y: 0, z: 0 },
-      { x: 0, y: 0, z: -coreRadius },
-      { x: 0, y: coreRadius * 1.3, z: 0 },
-    ];
-
-    const coreEdges = [
-      [0, 1], [0, 2], [0, 3], [0, 4],
-      [5, 1], [5, 2], [5, 3], [5, 4],
-      [1, 2], [2, 3], [3, 4], [4, 1]
-    ];
-
-    // 2. Gyroscope Ring Points Generator
-    const generateRing = (r: number, segments: number): Point3D[] => {
-      const ring: Point3D[] = [];
-      for (let i = 0; i < segments; i++) {
-        const theta = (i * 2 * Math.PI) / segments;
-        ring.push({ x: r * Math.cos(theta), y: r * Math.sin(theta), z: 0 });
-      }
-      return ring;
-    };
-
-    const ring1 = generateRing(95, 36);
-    const ring2 = generateRing(125, 48);
-    const ring3 = generateRing(145, 60);
-
-    // 3. Ambient Orbiting Particle Dust
-    const particleCount = 45;
-    const particles = Array.from({ length: particleCount }, () => {
-      const r = Math.random() * 80 + 70;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.random() * Math.PI;
-      return {
-        x: r * Math.sin(phi) * Math.cos(theta),
-        y: r * Math.cos(phi),
-        z: r * Math.sin(phi) * Math.sin(theta),
-        speed: (Math.random() - 0.5) * 0.02,
-        size: Math.random() * 1.5 + 0.8,
-      };
-    });
-
-    let autoAngle = 0;
-
-    const project = (p: Point3D, rx: number, ry: number, rz: number = 0) => {
-      // Rotation matrices
-      const cosY = Math.cos(ry), sinY = Math.sin(ry);
-      const cosX = Math.cos(rx), sinX = Math.sin(rx);
-      const cosZ = Math.cos(rz), sinZ = Math.sin(rz);
-
-      // Rotate around Z
-      let x = p.x * cosZ - p.y * sinZ;
-      let y = p.x * sinZ + p.y * cosZ;
-      let z = p.z;
-
-      // Rotate around Y
-      const x1 = x * cosY - z * sinY;
-      const z1 = x * sinY + z * cosY;
-
-      // Rotate around X
-      const y2 = y * cosX - z1 * sinX;
-      const z2 = z1 * cosX + y * sinX;
-
-      const fov = 380;
-      const scale = fov / (fov + z2);
-      return {
-        x: centerX + x1 * scale,
-        y: centerY + y2 * scale,
-        z: z2,
-        scale,
-      };
-    };
+    let localRotY = rotationY;
 
     const render = () => {
+      if (!canvas || !ctx) return;
+
+      const width = (canvas.width = canvas.parentElement?.clientWidth || 300);
+      const height = (canvas.height = canvas.parentElement?.clientHeight || 300);
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = Math.min(centerX, centerY) * 0.55;
+
       ctx.clearRect(0, 0, width, height);
 
-      if (!mouseRef.current.isDown) {
-        autoAngle += 0.012;
+      if (isAutoRotating && !isDraggingRef.current) {
+        localRotY += 0.01;
+      } else {
+        localRotY = rotationY;
       }
 
-      const baseRotX = mouseRef.current.rotX;
-      const baseRotY = mouseRef.current.rotY + autoAngle;
+      const effectiveRotX = rotationX;
 
-      // A. Ambient Core Radial Glow
-      const ambientGlow = ctx.createRadialGradient(centerX, centerY, 10, centerX, centerY, 150);
-      ambientGlow.addColorStop(0, 'rgba(168, 85, 247, 0.25)');
-      ambientGlow.addColorStop(0.4, 'rgba(6, 182, 212, 0.1)');
-      ambientGlow.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = ambientGlow;
+      const primaryColor =
+        threatLevel > 75
+          ? "244, 63, 94"
+          : threatLevel > 40
+          ? "245, 158, 11"
+          : "6, 182, 212";
+
+      const numRings = 8;
+      for (let i = 0; i < numRings; i++) {
+        const theta = (i * Math.PI) / numRings;
+        const currentR = radius * Math.sin(theta);
+        const yOffset = radius * Math.cos(theta) * Math.cos(effectiveRotX);
+
+        ctx.beginPath();
+        ctx.ellipse(
+          centerX,
+          centerY + yOffset,
+          Math.max(1, currentR),
+          Math.max(1, currentR * Math.sin(effectiveRotX + Math.PI / 2)),
+          localRotY,
+          0,
+          2 * Math.PI
+        );
+        ctx.strokeStyle = `rgba(${primaryColor}, ${0.15 + (i % 2) * 0.15})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      const gradient = ctx.createRadialGradient(
+        centerX,
+        centerY,
+        2,
+        centerX,
+        centerY,
+        radius * 0.35
+      );
+      gradient.addColorStop(0, `rgba(${primaryColor}, 0.8)`);
+      gradient.addColorStop(0.5, `rgba(${primaryColor}, 0.2)`);
+      gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+
       ctx.beginPath();
-      ctx.arc(centerX, centerY, 150, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, radius * 0.35, 0, 2 * Math.PI);
+      ctx.fillStyle = gradient;
       ctx.fill();
 
-      // B. Render Orbiting Gyroscopic Rings
-      const drawRing = (ringPoints: Point3D[], rx: number, ry: number, rz: number, color: string, isDashed = false) => {
-        const projected = ringPoints.map(p => project(p, rx, ry, rz));
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.2;
-        if (isDashed) ctx.setLineDash([4, 6]);
-        else ctx.setLineDash([]);
+      const particleCount = 12;
+      for (let p = 0; p < particleCount; p++) {
+        const pAngle = (p * 2 * Math.PI) / particleCount + localRotY * 1.5;
+        const px = centerX + Math.cos(pAngle) * (radius * 0.85);
+        const py =
+          centerY +
+          Math.sin(pAngle) * (radius * 0.85) * Math.sin(effectiveRotX);
 
         ctx.beginPath();
-        projected.forEach((p, idx) => {
-          if (idx === 0) ctx.moveTo(p.x, p.y);
-          else ctx.lineTo(p.x, p.y);
-        });
-        ctx.closePath();
-        ctx.stroke();
-        ctx.setLineDash([]);
-      };
-
-      drawRing(ring1, baseRotX + 0.5, baseRotY * 1.2, autoAngle * 0.5, 'rgba(168, 85, 247, 0.45)');
-      drawRing(ring2, baseRotX - 0.4, -baseRotY * 0.9, autoAngle * 0.3, 'rgba(6, 182, 212, 0.4)', true);
-      drawRing(ring3, baseRotX + Math.PI / 4, baseRotY * 0.7, 0, 'rgba(244, 63, 94, 0.3)');
-
-      // C. Render Floating Quantum Particle Dust
-      particles.forEach(p => {
-        const pt = project(p, baseRotX, baseRotY);
-        const alpha = Math.max(0.1, (pt.z + 150) / 300);
-        ctx.fillStyle = `rgba(192, 132, 252, ${alpha})`;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, Math.max(0.5, p.size * pt.scale), 0, Math.PI * 2);
+        ctx.arc(px, py, 2.5, 0, 2 * Math.PI);
+        ctx.fillStyle = `rgb(${primaryColor})`;
+        ctx.shadowColor = `rgb(${primaryColor})`;
+        ctx.shadowBlur = 8;
         ctx.fill();
-      });
-
-      // D. Render 3D Polyhedron Crystal Core
-      const projCore = coreVertices.map(v => project(v, baseRotX, baseRotY * 1.5, autoAngle));
-
-      // Draw Edges
-      ctx.strokeStyle = '#c084fc';
-      ctx.lineWidth = 1.8;
-      coreEdges.forEach(([start, end]) => {
-        const p1 = projCore[start];
-        const p2 = projCore[end];
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.stroke();
-      });
-
-      // Draw Core Vertices
-      projCore.forEach((p, idx) => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, idx === 0 || idx === 5 ? 3.5 : 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = idx % 2 === 0 ? '#f43f5e' : '#38bdf8';
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = ctx.fillStyle;
-        ctx.fill();
-      });
-      ctx.shadowBlur = 0;
-
-      // E. Laser Sweeper Horizon Line
-      const sweepY = centerY + Math.sin(autoAngle * 2) * 65;
-      const laserGrad = ctx.createLinearGradient(centerX - 120, sweepY, centerX + 120, sweepY);
-      laserGrad.addColorStop(0, 'rgba(0,0,0,0)');
-      laserGrad.addColorStop(0.5, 'rgba(6, 182, 212, 0.6)');
-      laserGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.strokeStyle = laserGrad;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(centerX - 120, sweepY);
-      ctx.lineTo(centerX + 120, sweepY);
-      ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
 
       animationFrameId = requestAnimationFrame(render);
     };
 
     render();
 
-    // Mouse Drag Listeners
-    const handleMouseDown = (e: MouseEvent) => {
-      mouseRef.current.isDown = true;
-      mouseRef.current.lastX = e.clientX;
-      mouseRef.current.lastY = e.clientY;
-    };
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!mouseRef.current.isDown) return;
-      const dx = e.clientX - mouseRef.current.lastX;
-      const dy = e.clientY - mouseRef.current.lastY;
-      mouseRef.current.rotY += dx * 0.008;
-      mouseRef.current.rotX += dy * 0.008;
-      mouseRef.current.lastX = e.clientX;
-      mouseRef.current.lastY = e.clientY;
-    };
-    const handleMouseUp = () => {
-      mouseRef.current.isDown = false;
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const step = 0.12;
-      if (e.key === 'ArrowLeft') mouseRef.current.rotY -= step;
-      else if (e.key === 'ArrowRight') mouseRef.current.rotY += step;
-      else if (e.key === 'ArrowUp') mouseRef.current.rotX -= step;
-      else if (e.key === 'ArrowDown') mouseRef.current.rotX += step;
-      else return;
-      e.preventDefault();
-    };
-
-    canvas.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    canvas.addEventListener('keydown', handleKeyDown);
-
     return () => {
       cancelAnimationFrame(animationFrameId);
-      canvas.removeEventListener('mousedown', handleMouseDown);
-      canvas.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, []);
+  }, [rotationX, rotationY, isAutoRotating, threatLevel]);
 
   return (
-    <div className="relative rounded-2xl bg-[#0d0c18]/90 backdrop-blur-2xl border border-white/15 p-5 shadow-2xl overflow-hidden flex flex-col items-center justify-between">
-      {/* Top Header */}
-      <div className="w-full flex items-center justify-between pb-3 border-b border-white/10 text-xs font-mono">
-        <div className="flex items-center gap-2">
-          <Cpu className="w-4 h-4 text-purple-400 animate-pulse" />
-          <span className="text-white font-bold tracking-wide">QUANTUM EVIDENCE CORE</span>
-        </div>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/25 text-[10px] text-cyan-300 font-mono">
-          <Sparkles className="w-3 h-3 text-cyan-400" /> ROTATABLE 3D
+    <div
+      ref={containerRef}
+      tabIndex={0}
+      role="region"
+      aria-label="3D Interactive Holographic Core: Use arrow keys to rotate, space to toggle auto-rotation, R to reset"
+      onKeyDown={handleKeyDown}
+      className="relative w-full h-64 rounded-xl border border-slate-800 bg-slate-950/70 p-4 flex flex-col items-center justify-center outline-none focus:ring-2 focus:ring-cyan-400/80 focus:border-cyan-400 transition-all cursor-grab active:cursor-grabbing"
+    >
+      <div className="absolute top-3 left-4 right-4 flex items-center justify-between font-mono text-[10px] text-slate-400">
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-ping" />
+          HOLO-CORE MATRIX
         </span>
+        <span className="text-slate-500">INTERACTIVE 3D VIZ</span>
       </div>
 
-      {/* 3D Canvas Projection */}
-      <div className="relative my-2 flex items-center justify-center">
-        <canvas
-          ref={canvasRef}
-          tabIndex={0}
-          role="img"
-          aria-label="Interactive rotating quantum evidence core. Use the arrow keys or the controls below to rotate it."
-          className="w-[340px] h-[290px] cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-purple-500/60 rounded-xl"
-        />
-      </div>
-      <div className="flex items-center justify-center gap-2" aria-label="Quantum evidence core rotation controls">
-        <button type="button" onClick={() => { mouseRef.current.rotY -= 0.2; }} aria-label="Rotate core left" className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/60">
-          <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-        </button>
-        <button type="button" onClick={() => { mouseRef.current.rotX -= 0.2; }} aria-label="Rotate core up" className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/60">
-          <ArrowUp className="w-3.5 h-3.5" aria-hidden="true" />
-        </button>
-        <button type="button" onClick={() => { mouseRef.current.rotX += 0.2; }} aria-label="Rotate core down" className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/60">
-          <ArrowDown className="w-3.5 h-3.5" aria-hidden="true" />
-        </button>
-        <button type="button" onClick={() => { mouseRef.current.rotY += 0.2; }} aria-label="Rotate core right" className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/60">
-          <RotateCw className="w-3.5 h-3.5" aria-hidden="true" />
-        </button>
-      </div>
+      <canvas
+        ref={canvasRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUpOrLeave}
+        onMouseLeave={handleMouseUpOrLeave}
+        className="w-full h-full block"
+      />
 
-      {/* Bottom Status Bar */}
-      <div className="w-full p-2.5 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between text-[11px] font-mono">
-        <span className="text-slate-400">Cryptographic Anchor:</span>
-        <span className="text-emerald-400 font-bold tracking-wide">SHA-256 IMMUTABLE</span>
+      <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between font-mono text-[10px]">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsAutoRotating((prev) => !prev)}
+            aria-label={isAutoRotating ? "Pause auto rotation" : "Start auto rotation"}
+            title="Toggle rotation"
+            className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-colors"
+          >
+            {isAutoRotating ? "PAUSE" : "ROTATE"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRotationX(0.2);
+              setRotationY(0.3);
+            }}
+            aria-label="Reset 3D core orientation"
+            title="Reset orientation"
+            className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 hover:text-white transition-colors"
+          >
+            RESET
+          </button>
+        </div>
+
+        <span
+          className={`font-semibold uppercase tracking-wider ${
+            threatLevel > 75
+              ? "text-rose-400"
+              : threatLevel > 40
+              ? "text-amber-400"
+              : "text-cyan-400"
+          }`}
+        >
+          {statusText}
+        </span>
       </div>
     </div>
   );
-};
+}
+
+export default CyberHoloCore3D;

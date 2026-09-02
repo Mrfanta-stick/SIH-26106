@@ -1,82 +1,160 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { UploadCloud, FileCheck, Loader2 } from 'lucide-react';
+import { useState, useRef, DragEvent, ChangeEvent, KeyboardEvent } from "react";
 
 interface DropzoneProps {
-  onAnalyze?: () => void;
+  onFileLoaded: (content: string, filename: string) => void;
+  isLoading?: boolean;
 }
 
-export const Dropzone: React.FC<DropzoneProps> = ({ onAnalyze }) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
+export default function Dropzone({ onFileLoaded, isLoading = false }: DropzoneProps) {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleSimulateUpload = (name: string) => {
-    setFileName(name);
-    setAnalyzing(true);
-    // Simulate pipeline analysis timing
-    setTimeout(() => {
-      setAnalyzing(false);
-      if (onAnalyze) onAnalyze();
-    }, 1500);
+  const handleFileProcess = (file: File) => {
+    setSelectedFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      if (content) {
+        onFileLoaded(content, file.name);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileProcess(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFileProcess(e.target.files[0]);
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInputRef.current?.click();
+    }
+  };
+
+  const clearSelection = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedFileName(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   return (
-    <div className="rounded-2xl bg-[#12151c]/60 backdrop-blur-xl border border-white/10 p-5 shadow-2xl shadow-black/60">
+    <div className="w-full">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleInputChange}
+        accept=".eml,.msg,.txt,.pcap"
+        className="hidden"
+        id="email-evidence-upload"
+        aria-label="Upload raw email or forensic telemetry file"
+      />
+
       <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          const file = e.dataTransfer.files[0];
-          if (file) handleSimulateUpload(file.name);
-        }}
-        onClick={() => handleSimulateUpload('suspicious_invoice.eml')}
-        className={`group relative border border-dashed rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ${
-          isDragging 
-            ? 'border-emerald-400 bg-emerald-500/10 shadow-lg shadow-emerald-500/10' 
-            : 'border-white/10 bg-[#08090c]/50 hover:border-emerald-500/40 hover:bg-[#08090c]/80 hover:shadow-lg hover:shadow-emerald-950/20'
+        role="button"
+        tabIndex={0}
+        aria-label="Upload email evidence: drag and drop file here or press Enter to browse"
+        onClick={() => fileInputRef.current?.click()}
+        onKeyDown={handleKeyDown}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200 outline-none focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 ${
+          isDragOver
+            ? "border-cyan-400 bg-cyan-950/30 scale-[1.01]"
+            : "border-slate-700/80 bg-slate-900/40 hover:border-slate-500 hover:bg-slate-900/60"
         }`}
       >
-        {analyzing ? (
-          <div className="flex flex-col items-center space-y-3 py-2">
-            <div className="p-3 bg-emerald-500/10 rounded-2xl border border-emerald-500/20 shadow-inner">
-              <Loader2 className="w-7 h-7 text-emerald-400 animate-spin" />
-            </div>
-            <div className="text-center">
-              <p className="text-xs font-semibold text-white tracking-tight">Running 5-Stage Forensics Engine...</p>
-              <p className="text-[11px] text-slate-400 font-medium mt-1 tracking-tight">
-                Hashing SHA-256 • Tracing MTAs • Classifying NLP Intent
-              </p>
-            </div>
+        <div className="flex flex-col items-center justify-center space-y-3 font-mono">
+          {/* Upload Icon */}
+          <div className="p-3.5 rounded-full bg-slate-800/80 border border-slate-700 text-cyan-400">
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
           </div>
-        ) : (
-          <div className="flex flex-col items-center space-y-3 text-center">
-            <div className="p-3.5 bg-white/[0.03] group-hover:bg-emerald-500/10 rounded-2xl border border-white/10 group-hover:border-emerald-500/30 transition-all duration-300 shadow-sm">
-              <UploadCloud className="w-6 h-6 text-slate-400 group-hover:text-emerald-400 transition-colors" />
-            </div>
-            <div>
-              <div className="text-xs font-medium text-slate-200">
-                <span className="text-emerald-400 font-semibold hover:underline">Click to upload</span> or drag and drop raw evidence
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Supports RFC 5322 <span className="text-slate-300 font-mono">.eml</span> and MAPI <span className="text-slate-300 font-mono">.msg</span> payloads
-              </p>
-            </div>
-            {fileName && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[11px] font-medium text-emerald-400">
-                <FileCheck className="w-3.5 h-3.5" />
-                <span>Loaded: {fileName}</span>
-              </div>
-            )}
+
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-slate-200">
+              {isLoading
+                ? "INGESTING EVIDENCE STREAM..."
+                : selectedFileName
+                ? `LOADED: ${selectedFileName}`
+                : "DRAG & DROP EMAIL TELEMETRY (.EML, .MSG, .TXT)"}
+            </p>
+            <p className="text-xs text-slate-400">
+              or click / press Enter to browse local system storage
+            </p>
           </div>
-        )}
+
+          {selectedFileName && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={clearSelection}
+                aria-label="Clear selected file"
+                title="Clear selected file"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded hover:bg-rose-900/50 transition-colors"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+                <span>CLEAR FILE</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
-};
+}

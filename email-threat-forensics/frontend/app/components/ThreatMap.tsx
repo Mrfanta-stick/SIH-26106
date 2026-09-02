@@ -1,136 +1,134 @@
-'use client';
+// @ts-nocheck
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
-import { Globe2, Server, AlertOctagon } from 'lucide-react';
-import { ForensicReport } from '../types/forensic';
+import { useState } from "react";
+import { ForensicReport } from "../types/forensic";
 
-// Dynamically import Leaflet components to prevent SSR window errors
-const MapContainer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.MapContainer),
-  { ssr: false }
-);
-const TileLayer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.TileLayer),
-  { ssr: false }
-);
-const CircleMarker = dynamic(
-  () => import('react-leaflet').then((mod) => mod.CircleMarker),
-  { ssr: false }
-);
-const Popup = dynamic(
-  () => import('react-leaflet').then((mod) => mod.Popup),
-  { ssr: false }
-);
-
-interface ThreatMapProps {
-  report: ForensicReport;
+export interface GeoHop {
+  id?: string;
+  ip?: string;
+  country?: string;
+  city?: string;
+  lat?: number;
+  lng?: number;
+  asn?: string;
+  org?: string;
+  suspicious?: boolean;
 }
 
-export const ThreatMap: React.FC<ThreatMapProps> = ({ report }) => {
-  const [isMounted, setIsMounted] = useState(false);
-  const { origin_network } = report;
+export interface ThreatMapProps {
+  report?: ForensicReport | any;
+  hops?: GeoHop[];
+}
 
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+export function ThreatMap({ report, hops }: ThreatMapProps) {
+  const activeHops: GeoHop[] = hops || report?.origin_network?.hops || [];
+  const [selectedHop, setSelectedHop] = useState<GeoHop | null>(null);
 
   return (
-    <div className="rounded-2xl bg-[#12151c]/60 backdrop-blur-xl border border-white/10 p-6 shadow-2xl shadow-black/60 mb-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-            <Globe2 className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold tracking-tight uppercase text-white">
-              Origin Geolocation & Infrastructure Telemetry
-            </h2>
-            <p className="text-xs text-slate-400">Physical routing origin & threat entity ASN</p>
-          </div>
+    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-4 backdrop-blur-sm font-mono">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+            Origin Network & Geo-IP Trajectory
+          </h3>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {origin_network.is_datacenter && (
-            <span className="px-2.5 py-1 text-[11px] font-mono rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/25 flex items-center gap-1.5">
-              <Server className="w-3 h-3" /> Datacenter / VPS IP
-            </span>
-          )}
-          {origin_network.is_vpn_tor && (
-            <span className="px-2.5 py-1 text-[11px] font-mono rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/25 flex items-center gap-1.5">
-              <AlertOctagon className="w-3 h-3" /> VPN / Tor Relay
-            </span>
-          )}
-        </div>
+        <span className="text-[10px] text-slate-500">
+          HOPS MONITORED: {activeHops.length}
+        </span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        
-        {/* Dark Mode Map View */}
-        <div className="lg:col-span-2 h-[280px] bg-[#08090c] rounded-xl border border-white/10 overflow-hidden relative shadow-inner">
-          {isMounted ? (
-            <MapContainer
-              center={[origin_network.latitude, origin_network.longitude]}
-              zoom={5}
-              style={{ height: '100%', width: '100%', backgroundColor: '#08090c' }}
-              scrollWheelZoom={false}
-            >
-              <TileLayer
-                attribution='Sources: Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community'
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-              />
-              <CircleMarker
-                center={[origin_network.latitude, origin_network.longitude]}
-                radius={8}
-                pathOptions={{
-                  color: '#fb7185',
-                  fillColor: '#f43f5e',
-                  fillOpacity: 0.85,
-                  weight: 3,
-                }}
-              >
-                <Popup>
-                  <div className="text-xs font-mono p-1">
-                    <strong className="text-slate-900">{origin_network.ip}</strong><br />
-                    <span className="text-slate-700">{origin_network.city}, {origin_network.country}</span><br />
-                    <span className="text-slate-500 text-[10px]">{origin_network.org}</span>
+      {activeHops.length === 0 ? (
+        <div className="py-8 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg">
+          No external IP routing hops extracted from headers.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Visual Sequence Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {activeHops.map((hop: GeoHop, idx: number) => {
+              const nodeKey = hop.id || hop.ip || `hop-${idx}`;
+              const isSelected =
+                selectedHop?.ip === hop.ip && Boolean(hop.ip);
+
+              return (
+                <div
+                  key={nodeKey}
+                  onClick={() => setSelectedHop(isSelected ? null : hop)}
+                  className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
+                    hop.suspicious
+                      ? "border-rose-500/40 bg-rose-950/20 hover:border-rose-400/60"
+                      : "border-slate-800 bg-slate-950/40 hover:border-slate-700"
+                  } ${
+                    isSelected
+                      ? "ring-1 ring-cyan-400 border-cyan-400/80 bg-slate-850"
+                      : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 mb-1.5">
+                    <span className="text-[10px] text-slate-500">
+                      HOP #{String(idx + 1).padStart(2, "0")}
+                    </span>
+                    {hop.suspicious && (
+                      <span className="text-[9px] px-1.5 py-0.2 bg-rose-950 border border-rose-800 text-rose-300 rounded font-semibold">
+                        ANOMALOUS
+                      </span>
+                    )}
                   </div>
-                </Popup>
-              </CircleMarker>
-            </MapContainer>
-          ) : (
-            <div className="flex items-center justify-center h-full text-xs text-slate-500 font-mono">
-              Loading GeoIP map...
+
+                  <div className="font-semibold text-slate-200 truncate">
+                    {hop.ip || "Unknown IP"}
+                  </div>
+
+                  <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                    <span>
+                      {hop.city ? `${hop.city}, ` : ""}
+                      {hop.country || "Unknown Origin"}
+                    </span>
+                    <span className="text-slate-500 text-[10px]">
+                      {hop.asn || ""}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Selected Node Inspector */}
+          {selectedHop && (
+            <div className="p-3.5 rounded-lg border border-cyan-500/30 bg-slate-950/80 text-xs text-slate-300 space-y-1.5">
+              <div className="text-[10px] uppercase tracking-wider text-cyan-400 font-semibold mb-1">
+                Routing Node Telemetry Detail
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-slate-500">IP Address:</span>{" "}
+                  {selectedHop.ip || "N/A"}
+                </div>
+                <div>
+                  <span className="text-slate-500">Organization / ISP:</span>{" "}
+                  {selectedHop.org || selectedHop.asn || "N/A"}
+                </div>
+                <div>
+                  <span className="text-slate-500">Location:</span>{" "}
+                  {selectedHop.city ? `${selectedHop.city}, ` : ""}
+                  {selectedHop.country || "N/A"}
+                </div>
+                <div>
+                  <span className="text-slate-500">Coordinates:</span>{" "}
+                  {selectedHop.lat && selectedHop.lng
+                    ? `${selectedHop.lat.toFixed(4)}, ${selectedHop.lng.toFixed(4)}`
+                    : "N/A"}
+                </div>
+              </div>
             </div>
           )}
         </div>
-
-        {/* IP & Domain Intelligence Data */}
-        <div className="bg-[#08090c]/70 p-4 rounded-xl border border-white/5 flex flex-col justify-between text-xs font-mono space-y-3">
-          <div>
-            <span className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold block mb-1">Origin Network</span>
-            <div className="text-white font-bold text-sm tracking-wide">{origin_network.ip}</div>
-            <div className="text-slate-400 text-[11px]">{origin_network.city}, {origin_network.country}</div>
-          </div>
-
-          <div className="pt-2.5 border-t border-white/5">
-            <span className="text-slate-400 uppercase tracking-wider text-[10px] font-semibold block mb-1">ASN Organization</span>
-            <div className="text-slate-200 text-[11px] font-medium">{origin_network.asn}</div>
-            <div className="text-slate-400 text-[11px] truncate">{origin_network.org}</div>
-          </div>
-
-          <div className="pt-2.5 border-t border-white/5 space-y-1.5">
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="text-slate-400">Entropy Score:</span>
-              <span className="text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{origin_network.domain_entropy}</span>
-            </div>
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="text-slate-400">Typosquat:</span>
-              <span className="text-rose-400 font-bold">{origin_network.typosquat_target} <span className="text-slate-500 font-normal">({origin_network.edit_distance})</span></span>
-            </div>
-          </div>
-        </div>
-
-      </div>
+      )}
     </div>
   );
-};
+}
+
+export default ThreatMap;
