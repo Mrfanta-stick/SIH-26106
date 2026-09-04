@@ -6,12 +6,9 @@ import urllib.request
 import urllib.error
 import redis
 import os
+import magic
 from dotenv import load_dotenv
 from pathlib import Path
-
-""" VirusTotal is Google's Virus database. 
-Hashes are compared by 67 engines, comparing attachments to already flagged attachments.
-Higher the malicious count, higher the threat."""
 
 env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path)
@@ -21,20 +18,15 @@ cache_db = None
 
 if REDIS_URL and REDIS_URL != "NOT_FOUND":
     try:
-        # print("Connecting to Redis")
         cache_db = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=5, ssl_cert_reqs="none")
         cache_db.ping()
-        # print("Connected to Redis")
     except redis.exceptions.ConnectionError as e:
         print("Redis connection error: ", e)
         cache_db = None
 
-
-# noinspection PyBroadException
 def get_cached_intel(sha256_hash):
     if not cache_db:
         return None
-
     try:
         cached_intel = cache_db.get(f"vt:{sha256_hash}")
         if cached_intel:
@@ -43,13 +35,6 @@ def get_cached_intel(sha256_hash):
         pass
     return None
 
-
-"""
-Suppose a new ransomware was discovered today. We will receive 0 warnings from VT.
-But after some time, VT will be updated and it will show warnings. But if we cache it, and forever use that, we will always display 0 seconds.
-ttl_seconds = that number (7 days in seconds), forces old entry to scrap away after 7 days, and new entry of same hash comes into play.
-"""
-# noinspection PyBroadException
 def set_cached_intel(sha256_hash, data, ttl_seconds=604800):
     if not cache_db:
         return
@@ -58,11 +43,9 @@ def set_cached_intel(sha256_hash, data, ttl_seconds=604800):
     except Exception:
         pass
 
-# noinspection PyBroadException
 def check_virustotal(sha256_hash, api_key):
     cached = get_cached_intel(sha256_hash)
     if cached:
-        # print("Cached found\n")
         return cached
 
     if not api_key or api_key == "NOT_FOUND":
@@ -81,18 +64,36 @@ def check_virustotal(sha256_hash, api_key):
                 "undetected": stats.get('undetected', 0),
                 "status": "Found in VT"
             }
-
             set_cached_intel(sha256_hash, result)
             return result
     except urllib.error.HTTPError as e:
         if e.code == 404:
             result = {"malicious": 0, "undetected": 0, "status": "File never seen by VT"}
-            set_cached_intel(sha256_hash, result, ttl_seconds=3600) # For undetected, cache only for an hour
+            set_cached_intel(sha256_hash, result, ttl_seconds=3600)
             return result
         return {"error": f"HTTP {e.code}"}
     except Exception as e:
         return {"error": "VT Connection Failed"}
 
+def evaluate_magic_bytes(filename, data):
+    if not data:
+        return {"magic_type": "Empty File", "risk": "None"}
+
+    magic_type = magic.from_buffer(data[:2048])
+    risk = "Low"
+
+    if "ISO 9660" in magic_type or filename.lower().endswith(('.iso', '.vhd', '.img')):
+        risk = "High (Container Smuggling / MotW Bypass)"
+    elif "PE32" in magic_type or "executable" in magic_type.lower():
+        risk = "Critical (Executable Payload)"
+    elif "script" in magic_type.lower() or filename.lower().endswith(('.vbs', '.js', '.wsf', '.ps1')):
+        risk = "High (Script Payload)"
+    elif "Microsoft Word" in magic_type or "Excel" in magic_type or filename.lower().endswith(('.docm', '.xlsm', '.xlsb')):
+        risk = "High (Macro-Enabled Document)"
+    elif "Zip archive" in magic_type or "RAR archive" in magic_type:
+        risk = "Medium (Archive Extraction Required)"
+
+    return {"magic_type": magic_type, "risk": risk}
 
 def analyze_attachments(eml_file_path, vt_api_key=None):
     with open(eml_file_path, 'rb') as f:
@@ -111,6 +112,9 @@ def analyze_attachments(eml_file_path, vt_api_key=None):
                 md5_hash = hashlib.md5(file_payload).hexdigest()
 
                 vt_results = check_virustotal(sha256_hash, vt_api_key)
+                
+                # EVALUATE MAGIC BYTES
+                magic_verdict = evaluate_magic_bytes(filename, file_payload)
 
                 attachments_data.append({
                     "filename": filename,
@@ -118,6 +122,8 @@ def analyze_attachments(eml_file_path, vt_api_key=None):
                     "md5": md5_hash,
                     "sha256": sha256_hash,
                     "mime_type": part.get_content_type(),
+                    "magic_type": magic_verdict["magic_type"],
+                    "risk": magic_verdict["risk"],
                     "virustotal_scan": vt_results
                 })
 
