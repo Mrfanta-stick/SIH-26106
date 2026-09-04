@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from app.network.hop_tracer import trace
 import ipaddress
+from app.network.ingest import EmailPayload
 
 # noinspection PyProtectedMember
 from app.network.domain_geo import _geo_lookup, _asn_lookup
@@ -47,9 +48,18 @@ def calculate_latency(time1_str, time2_str):
         return 0
 
 
-def build_routing_graph(eml_file_path):
-    with open(eml_file_path, 'rb') as f:
-        payload_bytes = f.read()
+def build_routing_graph(payload: bytes | EmailPayload):
+    if isinstance(payload, EmailPayload):
+        payload_bytes = b"\n".join(
+            header.encode("utf-8", errors="replace")
+            for header in payload.received_chain
+        )
+        payload_bytes = (
+            "\n".join(f"{key}: {value}" for key, value in payload.headers.items())
+            .encode("utf-8", errors="replace")
+        ) + b"\n\n" + payload_bytes
+    else:
+        payload_bytes = payload
 
     msg = email.message_from_bytes(payload_bytes, policy=policy.default)
 
@@ -96,12 +106,6 @@ def build_routing_graph(eml_file_path):
                 "id": f"node{node_counter}",
                 "label": cleaned_name,
                 "type": node_type,
-                "data": {
-                    "country": country,
-                    "asn": asn,
-                    "latitude": lat,
-                    "longitude": lon
-                }
             })
 
             seen_nodes.add(cleaned_name)
@@ -127,13 +131,14 @@ def build_routing_graph(eml_file_path):
 
         if i == 0:
             origin_id = add_node(hop.hostname, hop.ip, hop.is_public(), "origin")
-            edges.append({
-                "from": origin_id,
-                "to": current_node_id,
-                "protocol": protocol_used,
-                "latency_sec": 0,
-                "data": edge_data
-            })
+
+            if origin_id != current_node_id:
+                edges.append({
+                    "source": origin_id,
+                    "target": current_node_id,
+                    "protocol": protocol_used,
+                    "latency": "0s"
+                })
 
         if i > 0:
             prev_hop = team_hops[i - 1]
@@ -142,11 +147,10 @@ def build_routing_graph(eml_file_path):
             latency = calculate_latency(prev_hop.timestamp_hint, hop.timestamp_hint)
 
             edges.append({
-                "from": prev_node_id,
-                "to": current_node_id,
+                "source": prev_node_id,
+                "target": current_node_id,
                 "protocol": protocol_used,
-                "latency_sec": latency,
-                "data": edge_data
+                "latency": f"{latency}s"
             })
 
     return {

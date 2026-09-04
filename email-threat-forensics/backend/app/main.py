@@ -26,6 +26,7 @@ Pipeline at ``POST /api/analyze``
 
 from __future__ import annotations
 
+import os
 import logging
 import uuid
 from typing import List
@@ -35,6 +36,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.network import auth_verifier, domain_geo, hop_tracer, ingest
 from app.intent.extractor import detect_zero_font_obfuscation, extract_and_analyze_urls
+from app.attribution.master_builder import integrate
 from app.schemas.forensic_report import (
     AttachmentReport,
     ChainOfCustodyEntry,
@@ -84,10 +86,10 @@ async def health() -> dict:
             "auth_verifier",
             "domain_geo",
             "url_and_obfuscation_extractor",
+            "attribution_and_attachment_triage",
         ],
         "pipeline_stages_pending": [
             "stage3_nlp_semantic_engine",
-            "stage4_attribution_and_vt",
             "stage5_custody_anchoring",
         ],
     }
@@ -167,9 +169,25 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
         suspicious_urls=suspicious_urls,
     )
 
-    # STAGES 4 & 5: Placeholders for attachment triage and graph topology
-    attachment_forensics: List[AttachmentReport] = _placeholder_attachments(parsed)
-    topology = GraphTopology(nodes=[], edges=[], campaign_cluster_id=None)
+    # STAGE 4: Attachment triage and routing graph attribution
+    attribution = integrate(
+        payload,
+        parsed,
+        os.getenv("VT_API_KEY"),
+    )
+    stage4 = attribution["stage4_analysis"]
+    attachment_forensics: List[AttachmentReport] = [
+    AttachmentReport(
+        filename=attachment["filename"],
+        detected_magic=attachment["magic_type"],
+        risk=attachment["risk"],
+        size_bytes=attachment.get("size_bytes"),
+        sha256=attachment.get("sha256"),
+        virustotal_scan=attachment.get("virustotal_scan"),
+    )
+        for attachment in stage4["attachments"]
+    ]
+    topology = GraphTopology(**stage4["routing_graph"])
     chain_of_custody: List[ChainOfCustodyEntry] = _placeholder_chain(evidence)
 
     return MasterForensicReport(
@@ -182,18 +200,6 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
         graph_topology=topology,
         chain_of_custody=chain_of_custody,
     )
-
-
-def _placeholder_attachments(parsed: ingest.EmailPayload) -> List[AttachmentReport]:
-    """Populate initial attachment list until Stage 4 hash verification ships."""
-    return [
-        AttachmentReport(
-            filename=att.filename,
-            detected_magic=att.content_type,
-            risk="PENDING_TRIAGE",
-        )
-        for att in parsed.attachments
-    ]
 
 
 def _placeholder_chain(evidence: EvidenceMetadata) -> List[ChainOfCustodyEntry]:
