@@ -6,11 +6,15 @@ import urllib.request
 import urllib.error
 import redis
 import os
-import magic
+try:
+    import magic
+except ImportError:
+    magic = None
 from dotenv import load_dotenv
 from pathlib import Path
+from typing import Iterable
 
-env_path = Path(__file__).parent / '.env'
+env_path = Path(__file__).resolve().parents[0] / ".env"
 load_dotenv(dotenv_path=env_path)
 
 REDIS_URL = os.getenv("REDIS_URL", "NOT_FOUND")
@@ -20,7 +24,7 @@ if REDIS_URL and REDIS_URL != "NOT_FOUND":
     try:
         cache_db = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=5, ssl_cert_reqs="none")
         cache_db.ping()
-    except redis.exceptions.ConnectionError as e:
+    except redis.TimeoutError as e:
         print("Redis connection error: ", e)
         cache_db = None
 
@@ -49,7 +53,7 @@ def check_virustotal(sha256_hash, api_key):
         return cached
 
     if not api_key or api_key == "NOT_FOUND":
-        return {"malicious": 54, "undetected": 16, "status": "Mocked (No API Key)"}
+        return {"status": "Mocked (No API Key)"}
 
     url = f"https://www.virustotal.com/api/v3/files/{sha256_hash}"
     headers = {"x-apikey": api_key}
@@ -79,6 +83,9 @@ def evaluate_magic_bytes(filename, data):
     if not data:
         return {"magic_type": "Empty File", "risk": "None"}
 
+    if magic is None:
+        return {"magic_type": "Unavailable (libmagic not installed)", "risk": "Unknown"}
+
     magic_type = magic.from_buffer(data[:2048])
     risk = "Low"
 
@@ -95,36 +102,25 @@ def evaluate_magic_bytes(filename, data):
 
     return {"magic_type": magic_type, "risk": risk}
 
-def analyze_attachments(eml_file_path, vt_api_key=None):
-    with open(eml_file_path, 'rb') as f:
-        msg = email.message_from_binary_file(f, policy=policy.default)
-
+def analyze_attachment_parts(parts: Iterable[tuple[str, str, bytes]], vt_api_key=None):
     attachments_data = []
 
-    for part in msg.walk():
-        filename = part.get_filename()
+    for filename, mime_type, file_payload in parts:
+        payload = bytes(file_payload)
+        sha256_hash = hashlib.sha256(payload).hexdigest()
+        md5_hash = hashlib.md5(payload).hexdigest()
+        vt_results = check_virustotal(sha256_hash, vt_api_key)
+        magic_verdict = evaluate_magic_bytes(filename, payload)
 
-        if filename:
-            file_payload = part.get_payload(decode=True)
-
-            if file_payload:
-                sha256_hash = hashlib.sha256(file_payload).hexdigest()
-                md5_hash = hashlib.md5(file_payload).hexdigest()
-
-                vt_results = check_virustotal(sha256_hash, vt_api_key)
-                
-                # EVALUATE MAGIC BYTES
-                magic_verdict = evaluate_magic_bytes(filename, file_payload)
-
-                attachments_data.append({
-                    "filename": filename,
-                    "size_bytes": len(file_payload),
-                    "md5": md5_hash,
-                    "sha256": sha256_hash,
-                    "mime_type": part.get_content_type(),
-                    "magic_type": magic_verdict["magic_type"],
-                    "risk": magic_verdict["risk"],
-                    "virustotal_scan": vt_results
-                })
+        attachments_data.append({
+            "filename": filename,
+            "size_bytes": len(payload),
+            "md5": md5_hash,
+            "sha256": sha256_hash,
+            "mime_type": mime_type,
+            "magic_type": magic_verdict["magic_type"],
+            "risk": magic_verdict["risk"],
+            "virustotal_scan": vt_results
+        })
 
     return {"attachments": attachments_data}
