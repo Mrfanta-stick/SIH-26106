@@ -21,3 +21,7 @@ BeautifulSoup4>=4.15.0
 redis>=5.0
 python-dotenv>=1.0
 python-magic>=0.4.27 # provides the magic module used for attachment type detection
+
+
+# ── Stage 5 — Chain of custody and PDF export ───────────────────────────
+weasyprint>=69.0

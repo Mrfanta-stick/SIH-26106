@@ -1,27 +1,9 @@
-"""FastAPI entry-point — Email Threat Forensics backend.
+"""
+FastAPI entry-point — Email Threat Forensics backend.
 
 Wires Stage 1 (ingestion & hop traceback), Stage 2 (protocol authentication & GeoIP),
-and Stage 3 URL/obfuscation extraction into the unified MasterForensicReport contract.
-
-Pipeline at ``POST /api/analyze``
----------------------------------
-::
-
-    UploadFile (bytes)
-        │
-        ▼
-    ingest.extract_evidence(bytes, filename)          → EvidenceMetadata
-    ingest.parse_payload(bytes, filename)             → EmailPayload
-        │
-        ├── hop_tracer.extract_origin_ip_from_payload(...) → str
-        ├── auth_verifier.verify_from_payload(payload)     → ProtocolForensics
-        └── domain_geo.resolve(from_addr, ip)              → OriginNetwork
-        │
-        ├── extractor.detect_zero_font_obfuscation(html)   → visible_text, hidden_cues
-        └── extractor.extract_and_analyze_urls(html)       → List[SuspiciousURL]
-        │
-        ▼
-    MasterForensicReport (response_model)
+Stage 3 (URL/obfuscation extraction), Stage 4 (attribution & attachment triage),
+and St  age 5 (cryptographic custody ledger & court-ready PDF dossier).
 """
 
 from __future__ import annotations
@@ -29,14 +11,16 @@ from __future__ import annotations
 import os
 import logging
 import uuid
-from typing import List
+from typing import Dict, List
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.network import auth_verifier, domain_geo, hop_tracer, ingest
 from app.intent.extractor import detect_zero_font_obfuscation, extract_and_analyze_urls
 from app.attribution.master_builder import integrate
+from app.custody.audit_ledger import append_custody_entry, verify_ledger_integrity
+from app.custody.pdf_generator import generate_forensic_pdf
 from app.schemas.forensic_report import (
     AttachmentReport,
     ChainOfCustodyEntry,
@@ -51,6 +35,9 @@ from app.schemas.forensic_report import (
 
 logger = logging.getLogger(__name__)
 
+# In-MEMORY case cache to serve GET /api/case/{case_id}/export-pdf
+REPORT_CACHE: Dict[str, MasterForensicReport] = {}
+
 # FastAPI app & CORS configuration
 app = FastAPI(
     title="Email Threat Forensics API",
@@ -58,7 +45,7 @@ app = FastAPI(
         "DFIR pipeline for SIH Problem Statement 106 — exposes the unified "
         "MasterForensicReport contract across network, domain, and intent layers."
     ),
-    version="0.3.0",
+    version="0.5.0",
 )
 
 # Permissive CORS for local Next.js frontend development
@@ -87,10 +74,11 @@ async def health() -> dict:
             "domain_geo",
             "url_and_obfuscation_extractor",
             "attribution_and_attachment_triage",
+            "custody_anchoring",
+            "pdf_export"
         ],
         "pipeline_stages_pending": [
             "stage3_nlp_semantic_engine",
-            "stage5_custody_anchoring",
         ],
     }
 
@@ -116,13 +104,78 @@ async def analyze(file: UploadFile = File(...)) -> MasterForensicReport:
         logger.exception("analysis failed for %s", file.filename)
         raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}") from exc
 
+    REPORT_CACHE[report.case_id] = report
     return report
 
+@app.get(
+    "/api/case/{case_id}/export-pdf",
+    tags=["export"],
+    summary="Export court-ready PDF dossier for a previously analysed case.",
+)
+
+async def export_pdf_by_id(case_id: str):
+    # Retrieve case from memory and generate a court-admissible Weasyprint PDF.
+    report = REPORT_CACHE.get(case_id)
+    if not report:
+        raise HTTPException(
+            status_code = 404,
+            detail=f"Case {case_id} not found."
+        )
+    
+    try:
+        pdf_bytes = generate_forensic_pdf(report)
+    except Exception as e:
+        logger.exception("PDF rendering failed for case %s", case_id)
+        raise HTTPException(
+            status_code = 500,
+            detail=f"PDF generation failed. {e}",
+        )
+
+    return Response(
+        content = pdf_bytes,
+        media_type = "application/pdf",
+        headers = {
+            "Content-Disposition": f'attachment; filename="dossier_{case_id[:8]}.pdf"'
+        },  
+    )
+
+@app.post(
+    "/api/export-pdf",
+    tags=["export"],
+    summary="Stateless PDF export directly accepting a MasterForensicReport JSON",
+)
+
+async def export_pdf_direct(report: MasterForensicReport):
+    try:
+        pdf_bytes = generate_forensic_pdf(report)
+    except Exception as e:
+        logger.exception("Direct PDF rendering failed")
+        raise HTTPException(
+            status_code = 500,
+            detail = f"PDF generation failed. {e}"
+        )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers= {
+            "Content-Disposition": f'attachment; filename="dossier_{report.case_id[:8]}.pdf"'
+        }
+    )
 
 def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
-    """Execute ingestion, origin network resolution, and body analysis against raw bytes."""
+    # Execute ingestion, origin network resolution, and body analysis against raw bytes.
+
+    ledger: List[ChainOfCustodyEntry] = []
+
     # STAGE 1: Evidence hashing & RFC 5322 parsing
     evidence: EvidenceMetadata = ingest.extract_evidence(payload, filename)
+    append_custody_entry(
+        ledger,
+        action=f"EVIDENCE_INTAKE (SHA-256: {evidence.sha256[:16]})",
+        actor="system/ingest",
+    )
+
     parsed = ingest.parse_payload(payload, filename)
 
     # STAGE 1 & 2: Hop tracing, authentication, and origin enrichment
@@ -131,6 +184,12 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
     origin: OriginNetwork = domain_geo.resolve(
         from_address=parsed.from_address or "",
         ip=origin_ip,
+    )
+
+    append_custody_entry(
+        ledger,
+        action=f"NETWORK_ENRICHMENT (Origin: {origin_ip or 'unknown'}, Country: {origin.country})",
+        actor="system/network",
     )
 
     # STAGE 3: Hidden-text de-obfuscation & URL mismatch extraction
@@ -169,6 +228,12 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
         suspicious_urls=suspicious_urls,
     )
 
+    append_custody_entry(
+        ledger,
+        action=f"INTENT_ANALYSIS (Risk: {calculated_risk}, Intent: {intent.primary_intent})",
+        actor="system/intent",
+    )
+
     # STAGE 4: Attachment triage and routing graph attribution
     attribution = integrate(
         payload,
@@ -188,7 +253,15 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
         for attachment in stage4["attachments"]
     ]
     topology = GraphTopology(**stage4["routing_graph"])
-    chain_of_custody: List[ChainOfCustodyEntry] = _placeholder_chain(evidence)
+    append_custody_entry(
+        ledger,
+        action=f"ATTACHMENT_AND_GRAPH_TRIAGE (Attachments: {len(attachment_forensics)}, Nodes: {len(topology.nodes)})",
+        actor="system/attribution",
+    )
+
+    if not verify_ledger_integrity(ledger):
+        logger.error("Audit ledger integrity check failed during analysis pipeline")
+        raise RuntimeError("Chain of custody ledger validation failed: hash chain broken.")
 
     return MasterForensicReport(
         case_id=str(uuid.uuid4()),
@@ -198,22 +271,7 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
         threat_intent=intent,
         attachment_forensics=attachment_forensics,
         graph_topology=topology,
-        chain_of_custody=chain_of_custody,
+        chain_of_custody=ledger,
     )
-
-
-def _placeholder_chain(evidence: EvidenceMetadata) -> List[ChainOfCustodyEntry]:
-    """Genesis entry for chain of custody."""
-    return [
-        ChainOfCustodyEntry(
-            sequence=0,
-            timestamp=evidence.ingestion_timestamp,
-            action="INTAKE",
-            actor="system/ingest",
-            prev_hash="0" * 64,
-            entry_hash=evidence.sha256,
-        )
-    ]
-
 
 __all__ = ["app", "analyze"]
