@@ -176,6 +176,20 @@ class AttachmentReport(BaseModel):
         ),
     )
 
+    size_bytes: Optional[int] = Field(
+        default=None, 
+        description="Size of file in bytes."
+    )
+
+    sha256: Optional[str] = Field(
+        default=None, 
+        description="SHA-256 hash of attachment."
+    )
+
+    virustotal_scan: Optional[dict] = Field(
+        default=None, 
+        description="VirusTotal detection stats."
+    )
 
 class GraphNode(BaseModel):
     # A node in the React Flow campaign-cluster topology.
