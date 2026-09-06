@@ -1,8 +1,7 @@
-// @ts-nocheck
 "use client";
 
-import { useState } from "react";
-import { ForensicReport } from "../types/forensic";
+import { useMemo, useState } from "react";
+import { AttachmentReport, ForensicReport } from "../types/forensic";
 
 export interface AttachmentItem {
   filename?: string;
@@ -10,21 +9,69 @@ export interface AttachmentItem {
   size_bytes?: number;
   mime_type?: string;
   verdict?: "malicious" | "suspicious" | "clean" | "unknown";
+  risk?: string;
   entropy?: number;
   extracted_strings_summary?: string[];
   yara_matches?: string[];
   vt_positives?: number;
   vt_total?: number;
+  virustotal_scan?: Record<string, unknown> | null;
 }
 
 export interface AttachmentTriageProps {
-  report?: ForensicReport | any;
+  report?: ForensicReport | null;
   attachments?: AttachmentItem[];
 }
 
+function mapRiskToVerdict(risk?: string): AttachmentItem["verdict"] {
+  const value = (risk || "").toLowerCase();
+  if (!value) return "unknown";
+  if (value.includes("benign") || value === "clean") return "clean";
+  if (
+    value.includes("malicious") ||
+    value.includes("payload") ||
+    value.includes("macro") ||
+    value.includes("zip_bomb") ||
+    value.includes("critical")
+  ) {
+    return "malicious";
+  }
+  if (value.includes("unknown")) return "unknown";
+  return "suspicious";
+}
+
+function mapBackendAttachment(att: AttachmentReport): AttachmentItem {
+  const scan = att.virustotal_scan || null;
+  const malicious =
+    scan && typeof scan.malicious === "number" ? scan.malicious : undefined;
+  const total =
+    scan && typeof scan.total === "number"
+      ? scan.total
+      : scan
+        ? Object.values(scan).reduce<number>(
+            (sum, value) => sum + (typeof value === "number" ? value : 0),
+            0
+          )
+        : undefined;
+
+  return {
+    filename: att.filename,
+    sha256: att.sha256 || undefined,
+    size_bytes: att.size_bytes || undefined,
+    mime_type: att.detected_magic,
+    risk: att.risk,
+    verdict: mapRiskToVerdict(att.risk),
+    vt_positives: malicious,
+    vt_total: total,
+    virustotal_scan: scan,
+  };
+}
+
 export function AttachmentTriage({ report, attachments }: AttachmentTriageProps) {
-  const activeAttachments: AttachmentItem[] =
-    attachments || report?.evidence?.attachments || [];
+  const activeAttachments: AttachmentItem[] = useMemo(() => {
+    if (attachments?.length) return attachments;
+    return (report?.attachment_forensics || []).map(mapBackendAttachment);
+  }, [attachments, report]);
 
   const [selectedAttachment, setSelectedAttachment] =
     useState<AttachmentItem | null>(null);
@@ -72,15 +119,14 @@ export function AttachmentTriage({ report, attachments }: AttachmentTriageProps)
         <div className="space-y-2.5">
           {activeAttachments.map((att: AttachmentItem, idx: number) => {
             const isSelected =
-              selectedAttachment?.sha256 === att.sha256 &&
-              Boolean(att.sha256);
+              selectedAttachment?.sha256 === att.sha256 && Boolean(att.sha256)
+                ? true
+                : selectedAttachment?.filename === att.filename && !att.sha256;
 
             return (
               <div
                 key={att.filename || att.sha256 || idx}
-                onClick={() =>
-                  setSelectedAttachment(isSelected ? null : att)
-                }
+                onClick={() => setSelectedAttachment(isSelected ? null : att)}
                 className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
                   isSelected
                     ? "border-cyan-500/50 bg-slate-800/80 ring-1 ring-cyan-500/30"
@@ -106,7 +152,7 @@ export function AttachmentTriage({ report, attachments }: AttachmentTriageProps)
                         att.verdict
                       )}`}
                     >
-                      {att.verdict || "UNKNOWN"}
+                      {att.risk || att.verdict || "UNKNOWN"}
                     </span>
                   </div>
                 </div>
@@ -114,7 +160,7 @@ export function AttachmentTriage({ report, attachments }: AttachmentTriageProps)
                 {isSelected && (
                   <div className="mt-3 pt-3 border-t border-slate-800 space-y-2 text-[11px] text-slate-400">
                     <div>
-                      <span className="text-slate-500">MIME Type:</span>{" "}
+                      <span className="text-slate-500">Detected magic / MIME:</span>{" "}
                       <span className="text-slate-300">
                         {att.mime_type || "application/octet-stream"}
                       </span>
@@ -127,36 +173,22 @@ export function AttachmentTriage({ report, attachments }: AttachmentTriageProps)
                       </div>
                     )}
 
-                    {typeof att.entropy === "number" && (
+                    {typeof att.vt_positives === "number" && (
                       <div>
-                        <span className="text-slate-500">Entropy Score:</span>{" "}
-                        <span
-                          className={
-                            att.entropy > 7
-                              ? "text-rose-400 font-semibold"
-                              : "text-slate-300"
-                          }
-                        >
-                          {att.entropy.toFixed(2)} / 8.00
+                        <span className="text-slate-500">VirusTotal:</span>{" "}
+                        <span className="text-amber-300">
+                          {att.vt_positives}
+                          {typeof att.vt_total === "number" ? ` / ${att.vt_total}` : ""} detections
                         </span>
                       </div>
                     )}
 
-                    {att.yara_matches && att.yara_matches.length > 0 && (
-                      <div>
-                        <span className="text-slate-500 block mb-1">
-                          YARA Rule Hits:
+                    {att.virustotal_scan && typeof att.vt_positives !== "number" && (
+                      <div className="break-all">
+                        <span className="text-slate-500">VirusTotal scan:</span>{" "}
+                        <span className="text-slate-300">
+                          {JSON.stringify(att.virustotal_scan)}
                         </span>
-                        <div className="flex flex-wrap gap-1">
-                          {att.yara_matches.map((rule, rIdx) => (
-                            <span
-                              key={rIdx}
-                              className="px-1.5 py-0.2 bg-rose-950/40 border border-rose-800/40 text-rose-300 rounded text-[10px]"
-                            >
-                              {rule}
-                            </span>
-                          ))}
-                        </div>
                       </div>
                     )}
                   </div>

@@ -1,17 +1,18 @@
-// @ts-nocheck
 "use client";
 
 import { ForensicReport } from "../types/forensic";
 
 export interface ThreatGaugesProps {
-  report?: ForensicReport | any;
-  threatIntent?: any;
+  report?: ForensicReport | null;
+  threatIntent?: ForensicReport["threat_intent"];
 }
 
 export function ThreatGauges({ report, threatIntent }: ThreatGaugesProps) {
-  const intent = threatIntent || report?.threat_intent || {};
-  const threatScore = intent.threat_score ?? 92;
-  const urgency = intent.urgency_score ?? 85;
+  const intent = threatIntent || report?.threat_intent;
+  const threatScore = intent?.risk_score ?? 0;
+  const urgency = Math.round((intent?.urgency_score ?? 0) * 100);
+  const cues = intent?.flagged_coercion_cues ?? [];
+  const urls = intent?.suspicious_urls ?? [];
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-4 backdrop-blur-sm font-mono">
@@ -22,7 +23,9 @@ export function ThreatGauges({ report, threatIntent }: ThreatGaugesProps) {
             Social Engineering & Threat Intent Gauges
           </h3>
         </div>
-        <span className="text-[10px] text-slate-500">NLP COGNITIVE ANALYSIS</span>
+        <span className="text-[10px] text-slate-500">
+          {intent?.primary_intent?.replace(/_/g, " ") || "NO INTENT"}
+        </span>
       </div>
 
       <div className="space-y-3 text-xs">
@@ -46,6 +49,33 @@ export function ThreatGauges({ report, threatIntent }: ThreatGaugesProps) {
           </div>
         </div>
       </div>
+
+      {cues.length > 0 && (
+        <div className="pt-2 border-t border-slate-800 space-y-1.5">
+          <div className="text-[10px] uppercase text-slate-500">Flagged coercion / obfuscation cues</div>
+          {cues.map((cue, idx) => (
+            <div key={`${cue}-${idx}`} className="text-[11px] text-amber-200 bg-amber-950/20 border border-amber-800/40 rounded px-2 py-1">
+              {cue}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {urls.length > 0 && (
+        <div className="pt-2 border-t border-slate-800 space-y-1.5">
+          <div className="text-[10px] uppercase text-slate-500">Suspicious URLs</div>
+          {urls.map((url, idx) => (
+            <div key={`${url.destination}-${idx}`} className="text-[11px] text-slate-300 bg-slate-950/50 border border-slate-800 rounded px-2 py-1">
+              <span className={url.is_mismatch ? "text-rose-300" : "text-slate-300"}>
+                {url.anchor_text}
+              </span>
+              <span className="text-slate-500"> → </span>
+              <span className="text-cyan-300 break-all">{url.destination}</span>
+              {url.domain && <span className="text-slate-500"> ({url.domain})</span>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

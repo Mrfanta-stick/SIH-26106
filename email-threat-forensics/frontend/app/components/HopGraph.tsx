@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use client";
 
 import { useState } from "react";
@@ -7,7 +6,7 @@ import { ForensicReport } from "../types/forensic";
 export interface GraphNode {
   id: string;
   label: string;
-  type?: "source" | "mta" | "destination" | "relay";
+  type?: string;
   ip?: string;
   suspicious?: boolean;
 }
@@ -16,27 +15,34 @@ export interface GraphEdge {
   source: string;
   target: string;
   protocol?: string;
+  latency?: string;
   latency_ms?: number;
   auth_status?: "pass" | "fail" | "softfail" | "none";
 }
 
 export interface HopGraphProps {
-  report?: ForensicReport | any;
+  report?: ForensicReport | null;
   nodes?: GraphNode[];
   edges?: GraphEdge[];
 }
 
+function normalizeNodeType(type?: string) {
+  if (type === "origin" || type === "sender") return "source";
+  if (type === "destination") return "destination";
+  if (type === "relay" || type === "mta") return "relay";
+  return type || "mta";
+}
+
 export function HopGraph({ report, nodes, edges }: HopGraphProps) {
-  const activeNodes: GraphNode[] =
-    nodes || report?.protocol_forensics?.hop_graph?.nodes || [];
-  const activeEdges: GraphEdge[] =
-    edges || report?.protocol_forensics?.hop_graph?.edges || [];
+  const activeNodes: GraphNode[] = nodes || report?.graph_topology?.nodes || [];
+  const activeEdges: GraphEdge[] = edges || report?.graph_topology?.edges || [];
+  const clusterId = report?.graph_topology?.campaign_cluster_id;
 
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
 
   const getNodeColor = (type?: string, suspicious?: boolean) => {
     if (suspicious) return "border-rose-500/60 bg-rose-950/30 text-rose-300";
-    switch (type) {
+    switch (normalizeNodeType(type)) {
       case "source":
         return "border-amber-500/60 bg-amber-950/30 text-amber-300";
       case "destination":
@@ -56,6 +62,11 @@ export function HopGraph({ report, nodes, edges }: HopGraphProps) {
           </h3>
         </div>
         <div className="flex items-center gap-2">
+          {clusterId && (
+            <span className="text-[10px] text-purple-300 border border-purple-700/50 px-2 py-0.5 rounded">
+              CLUSTER {clusterId}
+            </span>
+          )}
           <button
             type="button"
             aria-label="Reset Hop Graph selection"
@@ -101,7 +112,7 @@ export function HopGraph({ report, nodes, edges }: HopGraphProps) {
                       </div>
                     </div>
                     <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded border border-slate-700 bg-slate-900/60">
-                      {node.type || "MTA"}
+                      {normalizeNodeType(node.type)}
                     </span>
                   </div>
 
@@ -113,8 +124,13 @@ export function HopGraph({ report, nodes, edges }: HopGraphProps) {
                       <span className="text-slate-600">│</span>
                       <span>▼</span>
                       <span className="text-slate-400">
-                        {connectedEdge.protocol || "ESMTPS"}
+                        {connectedEdge.protocol || "SMTP"}
                       </span>
+                      {connectedEdge.latency && (
+                        <span className="text-slate-500">
+                          (+{connectedEdge.latency})
+                        </span>
+                      )}
                       {typeof connectedEdge.latency_ms === "number" && (
                         <span className="text-slate-500">
                           (+{connectedEdge.latency_ms}ms)

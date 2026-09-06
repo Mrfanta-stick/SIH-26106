@@ -1,8 +1,7 @@
-// @ts-nocheck
 "use client";
 
 import { useEffect, useState } from "react";
-import { ForensicReport } from "../types/forensic";
+import { API_BASE, ForensicReport, formatApiError } from "../types/forensic";
 
 export interface ForensicScannerModalProps {
   isOpen?: boolean;
@@ -15,28 +14,25 @@ export interface ForensicScannerModalProps {
 }
 
 const SCAN_STEPS = [
-  { id: "mime", label: "RFC 5322 MIME Structure Parsing", detail: "Deconstructing multipart boundaries, character sets, and nested attachments...", durationMs: 1200 },
-  { id: "hops", label: "Trace Hop & Latency Reconstruction", detail: "Validating Received: headers, ASN lookups, and reverse DNS mapping...", durationMs: 1400 },
-  { id: "auth", label: "Cryptographic Auth Protocol Verification", detail: "Evaluating SPF policy, DKIM canonicalization, DMARC alignment & ARC seal...", durationMs: 1600 },
-  { id: "payload", label: "Payload & Attachment Triage", detail: "Computing SHA-256 hashes, magic byte validation, and heuristic triage...", durationMs: 1500 },
-  { id: "threat", label: "Threat Actor & TTP Mapping", detail: "Correlating IoCs against MITRE ATT&CK enterprise techniques...", durationMs: 1800 },
-  { id: "synthesis", label: "Forensic Synthesis & Verdict Engine", detail: "Aggregating risk vectors and generating structured evidence package...", durationMs: 1500 },
+  { id: "mime", label: "RFC 5322 MIME Structure Parsing", detail: "Deconstructing multipart boundaries, character sets, and nested attachments..." },
+  { id: "hops", label: "Trace Hop & Latency Reconstruction", detail: "Validating Received: headers, ASN lookups, and reverse DNS mapping..." },
+  { id: "auth", label: "Cryptographic Auth Protocol Verification", detail: "Evaluating SPF policy, DKIM canonicalization, DMARC alignment & ARC seal..." },
+  { id: "payload", label: "Payload & Attachment Triage", detail: "Computing SHA-256 hashes, magic byte validation, and heuristic triage..." },
+  { id: "threat", label: "URL Extraction & Intent Scoring", detail: "Detecting hidden text, href mismatches, and composite risk..." },
+  { id: "synthesis", label: "Custody Ledger & Report Synthesis", detail: "Anchoring chain-of-custody hashes and assembling MasterForensicReport..." },
 ];
 
 export function ForensicScannerModal({
   isOpen = true,
   onClose,
   file,
-  rawInput = "",
-  sourceType = "eml",
   onComplete,
   onError,
 }: ForensicScannerModalProps) {
-  const [state, setState] = useState("checking");
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
-  const [progress, setProgress] = useState(10);
+  const [progress, setProgress] = useState(8);
   const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([]);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const addLog = (msg: string) => {
     const timestamp = new Date().toISOString().substring(11, 19);
@@ -47,71 +43,69 @@ export function ForensicScannerModal({
     if (!isOpen) return;
 
     let isMounted = true;
+    const abortController = new AbortController();
     const runPipeline = async () => {
-  try {
-    setState("analyzing");
-    addLog(`Target File: ${file?.name || "suspicious_invoice.eml"}`);
-    addLog("Initializing forensic reconstruction stream...");
+      try {
+        setFailure(null);
+        addLog(`Target File: ${file?.name || "unnamed evidence"}`);
+        addLog(`POST ${API_BASE}/api/analyze`);
 
-    for (let i = 0; i < SCAN_STEPS.length; i++) {
-      if (!isMounted) return;
-
-      setCurrentStepIndex(i);
-      addLog(`Executing: ${SCAN_STEPS[i].label}`);
-      setProgress(Math.round(((i + 1) / SCAN_STEPS.length) * 100));
-
-      await new Promise((r) => setTimeout(r, 600));
-
-      setCompletedSteps((prev) => [...prev, SCAN_STEPS[i].id]);
-    }
-
-    if (!file) {
-      throw new Error("No evidence file selected.");
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    addLog("Sending evidence to FastAPI...");
-
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-
-    const response = await fetch(`${apiBase}/api/analyze`, {
-      method: "POST",
-      body: formData,
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        data?.detail || `API request failed (${response.status})`
-      );
-    }
-
-    addLog("Forensic report received from FastAPI.");
-
-    setState("complete");
-    addLog("Forensic pipeline completed. Loading report view...");
-
-    if (onComplete) {
-      setTimeout(() => {
-        if (isMounted) {
-          onComplete(data as ForensicReport);
+        for (let i = 0; i < SCAN_STEPS.length; i++) {
+          if (!isMounted) return;
+          setCurrentStepIndex(i);
+          addLog(`Executing: ${SCAN_STEPS[i].label}`);
+          setProgress(Math.round(((i + 1) / (SCAN_STEPS.length + 1)) * 100));
+          await new Promise((r) => setTimeout(r, 350));
         }
-      }, 500);
-    }
-  } catch (err: any) {
-    if (onError) {
-      onError(err?.message || "Execution failure");
-    }
-  }
-};
+
+        if (!file) {
+          throw new Error("No evidence file selected.");
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        addLog("Sending evidence to FastAPI /api/analyze...");
+
+        const response = await fetch(`${API_BASE}/api/analyze`, {
+          method: "POST",
+          body: formData,
+          signal: abortController.signal,
+        });
+
+        let payload: unknown = null;
+        try {
+          payload = await response.json();
+        } catch {
+          throw new Error(`API returned a non-JSON response (${response.status})`);
+        }
+
+        if (!response.ok) {
+          throw new Error(formatApiError(payload, response.status));
+        }
+
+        addLog("MasterForensicReport received from FastAPI.");
+        setProgress(100);
+
+        if (onComplete) {
+          setTimeout(() => {
+            if (isMounted) onComplete(payload as ForensicReport);
+          }, 400);
+        }
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        const message =
+          err instanceof Error ? err.message : "Could not connect to the analysis server.";
+        addLog(`ERROR: ${message}`);
+        setFailure(message);
+        onError?.(message);
+      }
+    };
 
     runPipeline();
     return () => {
       isMounted = false;
+      abortController.abort();
     };
   }, [isOpen, file]);
 
@@ -129,12 +123,17 @@ export function ForensicScannerModal({
             <span className="h-2 w-2 rounded-full bg-cyan-400 animate-ping" />
             LIVE FORENSIC RECONSTRUCTION STREAM
           </span>
-          <span className="text-slate-400">Scanning {progress}%</span>
+          <span className="text-slate-400">
+            {failure ? "FAILED" : `Scanning ${progress}%`}
+          </span>
         </div>
 
         <div className="p-5 space-y-3">
           <div className="text-slate-400">
-            Target File: <span className="text-slate-200">{file?.name || "suspicious_invoice.eml"}</span>
+            Target File: <span className="text-slate-200">{file?.name || "no file selected"}</span>
+          </div>
+          <div className="text-slate-500">
+            Step: <span className="text-slate-300">{SCAN_STEPS[currentStepIndex]?.label}</span>
           </div>
 
           <div className="p-3 bg-slate-950 rounded border border-slate-800/80 max-h-48 overflow-y-auto space-y-1 text-[11px] text-slate-300">
@@ -142,6 +141,12 @@ export function ForensicScannerModal({
               <div key={i}>{log}</div>
             ))}
           </div>
+
+          {failure && (
+            <div className="p-3 rounded border border-rose-800/60 bg-rose-950/40 text-rose-200 text-[11px]">
+              {failure}
+            </div>
+          )}
 
           <div className="pt-2 flex justify-end gap-2">
             <button

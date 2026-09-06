@@ -1,7 +1,6 @@
-// @ts-nocheck
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ForensicReport } from "../types/forensic";
 
 export interface GeoHop {
@@ -14,20 +13,43 @@ export interface GeoHop {
   asn?: string;
   org?: string;
   suspicious?: boolean;
+  is_vpn_tor?: boolean;
+  is_datacenter?: boolean;
+  typosquat_target?: string | null;
 }
 
 export interface ThreatMapProps {
-  report?: ForensicReport | any;
+  report?: ForensicReport | null;
   hops?: GeoHop[];
 }
 
 export function ThreatMap({ report, hops }: ThreatMapProps) {
-  const activeHops: GeoHop[] = hops || report?.origin_network?.hops || [];
+  const origin = report?.origin_network;
+  const activeHops: GeoHop[] = useMemo(() => {
+    if (hops?.length) return hops;
+    if (!origin?.ip) return [];
+    return [
+      {
+        id: "origin",
+        ip: origin.ip,
+        country: origin.country,
+        city: origin.city,
+        lat: origin.latitude,
+        lng: origin.longitude,
+        asn: origin.asn,
+        org: origin.org,
+        suspicious: Boolean(origin.is_vpn_tor || origin.is_datacenter),
+        is_vpn_tor: origin.is_vpn_tor,
+        is_datacenter: origin.is_datacenter,
+        typosquat_target: origin.typosquat_target,
+      },
+    ];
+  }, [hops, origin]);
+
   const [selectedHop, setSelectedHop] = useState<GeoHop | null>(null);
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 space-y-4 backdrop-blur-sm font-mono">
-      {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
@@ -36,17 +58,16 @@ export function ThreatMap({ report, hops }: ThreatMapProps) {
           </h3>
         </div>
         <span className="text-[10px] text-slate-500">
-          HOPS MONITORED: {activeHops.length}
+          ORIGIN NODES: {activeHops.length}
         </span>
       </div>
 
       {activeHops.length === 0 ? (
         <div className="py-8 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg">
-          No external IP routing hops extracted from headers.
+          No origin IP enrichment returned by the backend.
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Visual Sequence Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {activeHops.map((hop: GeoHop, idx: number) => {
               const nodeKey = hop.id || hop.ip || `hop-${idx}`;
@@ -63,17 +84,17 @@ export function ThreatMap({ report, hops }: ThreatMapProps) {
                       : "border-slate-800 bg-slate-950/40 hover:border-slate-700"
                   } ${
                     isSelected
-                      ? "ring-1 ring-cyan-400 border-cyan-400/80 bg-slate-850"
+                      ? "ring-1 ring-cyan-400 border-cyan-400/80"
                       : ""
                   }`}
                 >
                   <div className="flex items-center justify-between gap-1 mb-1.5">
                     <span className="text-[10px] text-slate-500">
-                      HOP #{String(idx + 1).padStart(2, "0")}
+                      NODE #{String(idx + 1).padStart(2, "0")}
                     </span>
                     {hop.suspicious && (
                       <span className="text-[9px] px-1.5 py-0.2 bg-rose-950 border border-rose-800 text-rose-300 rounded font-semibold">
-                        ANOMALOUS
+                        {hop.is_vpn_tor ? "VPN/TOR" : hop.is_datacenter ? "DATACENTER" : "ANOMALOUS"}
                       </span>
                     )}
                   </div>
@@ -96,7 +117,6 @@ export function ThreatMap({ report, hops }: ThreatMapProps) {
             })}
           </div>
 
-          {/* Selected Node Inspector */}
           {selectedHop && (
             <div className="p-3.5 rounded-lg border border-cyan-500/30 bg-slate-950/80 text-xs text-slate-300 space-y-1.5">
               <div className="text-[10px] uppercase tracking-wider text-cyan-400 font-semibold mb-1">
@@ -118,10 +138,16 @@ export function ThreatMap({ report, hops }: ThreatMapProps) {
                 </div>
                 <div>
                   <span className="text-slate-500">Coordinates:</span>{" "}
-                  {selectedHop.lat && selectedHop.lng
+                  {typeof selectedHop.lat === "number" && typeof selectedHop.lng === "number"
                     ? `${selectedHop.lat.toFixed(4)}, ${selectedHop.lng.toFixed(4)}`
                     : "N/A"}
                 </div>
+                {selectedHop.typosquat_target && (
+                  <div className="col-span-2">
+                    <span className="text-slate-500">Typosquat target:</span>{" "}
+                    {selectedHop.typosquat_target}
+                  </div>
+                )}
               </div>
             </div>
           )}

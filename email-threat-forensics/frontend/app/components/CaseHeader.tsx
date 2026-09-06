@@ -1,11 +1,10 @@
-// @ts-nocheck
 "use client";
 
 import { useState } from "react";
 import { ForensicReport } from "../types/forensic";
 
 export interface CaseHeaderProps {
-  report?: ForensicReport | any;
+  report?: ForensicReport | null;
   caseId?: string;
   timestamp?: string;
   classification?: string;
@@ -17,9 +16,9 @@ export interface CaseHeaderProps {
 export function CaseHeader(props: CaseHeaderProps) {
   const {
     report,
-    caseId = report?.case_id || "CASE-2026-08A",
-    timestamp = report?.evidence?.timestamp || "2026-09-02T00:00:00.000Z",
-    classification = "CONFIDENTIAL // TLP:AMBER",
+    caseId = report?.case_id || "NO CASE LOADED",
+    timestamp = report?.evidence?.ingestion_timestamp || "—",
+    classification = report?.evidence?.filename || "CONFIDENTIAL // TLP:AMBER",
     onOpenDossier,
     onExportReport,
     onReset,
@@ -58,7 +57,7 @@ export function CaseHeader(props: CaseHeaderProps) {
             <div className="text-[11px] text-slate-500 flex items-center gap-3">
               <span suppressHydrationWarning>{timestamp}</span>
               <span>|</span>
-              <span className="text-amber-400">{classification}</span>
+              <span className="text-amber-400 truncate max-w-[280px]">{classification}</span>
             </div>
           </div>
         </div>

@@ -1,8 +1,7 @@
-// @ts-nocheck
 "use client";
 
-import { useEffect } from "react";
-import { ForensicReport } from "../types/forensic";
+import { useEffect, useState } from "react";
+import { API_BASE, ForensicReport, formatApiError } from "../types/forensic";
 
 export interface DossierModalProps {
   isOpen?: boolean;
@@ -15,6 +14,9 @@ export function DossierModal({
   onClose,
   report,
 }: DossierModalProps) {
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && onClose) onClose();
@@ -22,6 +24,49 @@ export function DossierModal({
     if (isOpen) window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
+
+  const downloadPdf = async () => {
+    if (!report) return;
+    setExportError(null);
+    setExporting(true);
+    try {
+      let response = await fetch(
+        `${API_BASE}/api/case/${encodeURIComponent(report.case_id)}/export-pdf`
+      );
+
+      if (response.status === 404) {
+        response = await fetch(`${API_BASE}/api/export-pdf`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(report),
+        });
+      }
+
+      if (!response.ok) {
+        let payload: unknown = null;
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
+        throw new Error(formatApiError(payload, response.status));
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `dossier_${report.case_id.slice(0, 8)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "PDF export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -50,6 +95,11 @@ export function DossierModal({
         </div>
 
         <div className="p-6 overflow-y-auto space-y-4 text-xs">
+          {exportError && (
+            <div className="p-3 rounded border border-rose-800/50 bg-rose-950/40 text-rose-200">
+              {exportError}
+            </div>
+          )}
           <div className="p-4 rounded bg-slate-950 border border-slate-800 text-emerald-400 select-all whitespace-pre-wrap">
             {JSON.stringify(report || {}, null, 2)}
           </div>
@@ -58,10 +108,11 @@ export function DossierModal({
         <div className="px-6 py-3 border-t border-slate-800 bg-slate-950/50 flex justify-between items-center text-xs">
           <button
             type="button"
-            onClick={() => window.print()}
-            className="px-3 py-1 bg-cyan-950 border border-cyan-700 text-cyan-300 rounded hover:bg-cyan-900 transition-colors"
+            onClick={downloadPdf}
+            disabled={!report || exporting}
+            className="px-3 py-1 bg-cyan-950 border border-cyan-700 text-cyan-300 rounded hover:bg-cyan-900 transition-colors disabled:opacity-40"
           >
-            Print / Save PDF
+            {exporting ? "Exporting…" : "Download Court PDF"}
           </button>
           <button
             type="button"

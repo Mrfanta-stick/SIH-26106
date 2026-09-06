@@ -18,6 +18,7 @@ import { ForensicScannerModal } from './components/ForensicScannerModal';
 import { MitreMatrix } from './components/MitreMatrix';
 import { DossierModal } from './components/DossierModal';
 import { mockForensicReport } from './data/mockReport';
+import { API_BASE, formatApiError } from './types/forensic';
 
 function CyberTelemetryBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -136,12 +137,50 @@ export default function ForensicApp() {
 
   const handleScanClose = useCallback(() => {
     setIsScanning(false);
-    setError(null);
   }, []);
 
   const handleScanError = useCallback((message: string) => {
     setError(message);
   }, []);
+
+  const handleDownloadPDF = async () => {
+    if (!report) return;
+    const filename = `dossier_${report.case_id.slice(0, 8)}.pdf`;
+    try {
+      let response = await fetch(`${API_BASE}/api/case/${encodeURIComponent(report.case_id)}/export-pdf`);
+
+      if (response.status === 404) {
+        response = await fetch(`${API_BASE}/api/export-pdf`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(report),
+        });
+      }
+
+      if (!response.ok) {
+        let payload: unknown = null;
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
+        throw new Error(formatApiError(payload, response.status));
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export Error:', err);
+      setIsDossierOpen(true);
+    }
+  };
 
   const resetToHero = () => setCurrentView('hero');
 
@@ -257,19 +296,19 @@ export default function ForensicApp() {
           <div className="space-y-6">
             <div className="flex items-center gap-4 px-4 py-2 rounded-xl bg-[#0b0d13]/80 border border-white/5 text-[11px] font-mono overflow-x-auto no-scrollbar shadow-inner text-slate-400">
               <div className="flex items-center gap-1.5 text-cyan-400 shrink-0 font-bold"><Terminal className="w-3.5 h-3.5" /><span>TELEMETRY:</span></div>
-              <span className="shrink-0">MTA HOPS: <strong className="text-white">{report.graph_topology.nodes.length || '—'}</strong></span><span className="text-slate-600">•</span>
+              <span className="shrink-0">MTA HOPS: <strong className="text-white">{report.graph_topology?.nodes?.length || '—'}</strong></span><span className="text-slate-600">•</span>
               <span className="shrink-0">RISK: <strong className={report.threat_intent.risk_score >= 50 ? 'text-rose-400' : 'text-emerald-400'}>{report.threat_intent.risk_score}/100</strong></span><span className="text-slate-600">•</span>
               <span className="shrink-0">DKIM: <strong className={report.protocol_forensics.dkim === 'PASS' ? 'text-emerald-400' : 'text-rose-400'}>{report.protocol_forensics.dkim}</strong></span><span className="text-slate-600">•</span>
-              <span className="shrink-0">ENTROPY: <strong className="text-amber-400">{report.origin_network.domain_entropy.toFixed(2)}</strong></span><span className="text-slate-600">•</span>
+              <span className="shrink-0">ENTROPY: <strong className="text-amber-400">{report.origin_network?.domain_entropy?.toFixed(2) ?? '0.00'}</strong></span><span className="text-slate-600">•</span>
               <span className="shrink-0">CASE: <strong className="text-emerald-400">{riskLabel}</strong></span>
             </div>
 
-            <CaseHeader report={report} />
+            <CaseHeader report={report} onOpenDossier={() => setIsDossierOpen(true)} onExportReport={handleDownloadPDF} />
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
               <div className="flex flex-wrap gap-2">
                 {(['triage', 'network', 'payload'] as TabType[]).map((tab) => <button key={tab} onClick={() => setActiveTab(tab)} className={`px-3.5 py-1.5 rounded-lg text-[11px] font-mono uppercase transition-all ${activeTab === tab ? 'bg-purple-600/20 text-purple-300 border border-purple-500/40' : 'bg-white/[0.03] text-slate-400 border border-white/5 hover:text-white'}`}>{tab}</button>)}
               </div>
-              <button onClick={() => setIsDossierOpen(true)} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-slate-300 transition-all"><Download className="w-3.5 h-3.5 text-purple-400" /><span>Export Court Dossier</span></button>
+              <button onClick={handleDownloadPDF} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-slate-300 transition-all"><Download className="w-3.5 h-3.5 text-purple-400" /><span>Export Court Dossier</span></button>
             </div>
 
             {activeTab === 'triage' && <div className="space-y-6"><AiVerdict report={report} /><ThreatGauges report={report} /><MitreMatrix report={report} /></div>}

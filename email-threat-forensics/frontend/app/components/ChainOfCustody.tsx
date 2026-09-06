@@ -29,6 +29,11 @@ export const ChainOfCustody: React.FC<ChainOfCustodyProps> = ({ report }) => {
       </div>
 
       {/* Connected Timeline Container */}
+      {report.chain_of_custody.length === 0 ? (
+        <div className="py-8 text-center text-xs text-slate-500 border border-dashed border-white/10 rounded-xl font-mono">
+          No chain-of-custody entries were returned for this case.
+        </div>
+      ) : (
       <div className="relative pl-6 space-y-6 before:absolute before:left-[19px] before:top-3 before:bottom-3 before:w-[2px] before:bg-gradient-to-b before:from-indigo-500 before:via-cyan-500 before:to-emerald-500/40">
         {report.chain_of_custody.map((entry) => (
           <div key={entry.sequence} className="relative group">
@@ -73,6 +78,7 @@ export const ChainOfCustody: React.FC<ChainOfCustodyProps> = ({ report }) => {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 };
