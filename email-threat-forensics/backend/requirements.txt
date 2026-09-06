@@ -13,3 +13,6 @@ extract-msg>=0.41        # MAPI .msg parser (extract_msg at runtime)
 tldextract>=5.1
 python-Levenshtein>=0.25 # fast C-backed edit distance
 geoip2>=4.8              # MaxMind GeoLite2 / GeoLite2-ASN readers
+
+# ── Stage 3 — Intent Parsing ───────────────────────────────────────────
+BeautifulSoup4>=4.15.0
