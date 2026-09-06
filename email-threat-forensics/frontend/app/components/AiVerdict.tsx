@@ -32,7 +32,7 @@ export const AiVerdict: React.FC<AiVerdictProps> = ({ report }) => {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
           <div className="p-3 rounded-xl bg-[#08090c]/60 border border-white/5 text-xs space-y-1"><span className="text-[10px] uppercase font-mono text-slate-400 block">Intent</span><span className="text-purple-300 font-semibold">{intent}</span></div>
           <div className="p-3 rounded-xl bg-[#08090c]/60 border border-white/5 text-xs space-y-1"><span className="text-[10px] uppercase font-mono text-slate-400 block">Authentication</span><span className={authFailed ? 'text-rose-400 font-semibold' : 'text-emerald-400 font-semibold'}>{authFailed ? `${authFailed} non-pass result(s)` : 'All controls PASS'}</span></div>
-          <div className="p-3 rounded-xl bg-[#08090c]/60 border border-white/5 text-xs space-y-1"><span className="text-[10px] uppercase font-mono text-slate-400 block">Pipeline Scope</span><span className="text-cyan-300 font-semibold">Stage 1–2 active</span></div>
+          <div className="p-3 rounded-xl bg-[#08090c]/60 border border-white/5 text-xs space-y-1"><span className="text-[10px] uppercase font-mono text-slate-400 block">Pipeline Scope</span><span className="text-cyan-300 font-semibold">Stage 1–3 HTML active</span></div>
         </div>
       </div>
     </div>
