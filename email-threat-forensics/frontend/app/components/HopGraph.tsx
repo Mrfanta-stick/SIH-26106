@@ -17,7 +17,7 @@ export interface GraphEdge {
   protocol?: string;
   latency?: string;
   latency_ms?: number;
-  auth_status?: "pass" | "fail" | "softfail" | "none";
+  auth_status?: "pass" | "fail" | "softfail" | "none" | string;
 }
 
 export interface HopGraphProps {

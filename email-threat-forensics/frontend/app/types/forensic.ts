@@ -28,6 +28,8 @@ export interface GraphNode {
   id: string;
   label: string;
   type: string;
+  ip?: string;
+  suspicious?: boolean;
 }
 
 export interface GraphEdge {
@@ -35,6 +37,7 @@ export interface GraphEdge {
   target: string;
   protocol: string;
   latency: string;
+  auth_status?: "pass" | "fail" | "softfail" | "none" | string;
 }
 
 export interface ForensicReport {
