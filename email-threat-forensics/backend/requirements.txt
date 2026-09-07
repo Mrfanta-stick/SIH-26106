@@ -25,3 +25,5 @@ python-magic>=0.4.27 # provides the magic module used for attachment type detect
 
 # ── Stage 5 — Chain of custody and PDF export ───────────────────────────
 weasyprint>=69.0
+spacy>=3.8.16
+sentence_transformers>=6.0.1
