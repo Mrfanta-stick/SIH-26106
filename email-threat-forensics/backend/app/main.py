@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.network import auth_verifier, domain_geo, hop_tracer, ingest
 from app.intent.extractor import detect_zero_font_obfuscation, extract_and_analyze_urls
+from app.intent.intent import threat_intent
 from app.attribution.master_builder import integrate
 from app.custody.audit_ledger import append_custody_entry, verify_ledger_integrity
 from app.custody.pdf_generator import generate_forensic_pdf
@@ -121,7 +122,7 @@ async def export_pdf_by_id(case_id: str):
             status_code = 404,
             detail=f"Case {case_id} not found."
         )
-    
+
     try:
         pdf_bytes = generate_forensic_pdf(report)
     except Exception as e:
@@ -136,7 +137,7 @@ async def export_pdf_by_id(case_id: str):
         media_type = "application/pdf",
         headers = {
             "Content-Disposition": f'attachment; filename="dossier_{case_id[:8]}.pdf"'
-        },  
+        },
     )
 
 @app.post(
@@ -207,30 +208,28 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
         for u in raw_urls
     ]
 
-    # Rule-based threat scoring from extraction indicators
-    unique_redirectors = len({u["destination"] for u in raw_urls if u.get("is_redirector")})
-    unique_mismatches = len({u["destination"] for u in raw_urls if u.get("is_mismatch")})
-    unique_userinfo = len({u["destination"] for u in raw_urls if u.get("has_userinfo")})
-
-    calculated_risk = min(
-        100,
-        (unique_mismatches * 35)
-        + (unique_redirectors * 20)
-        + (unique_userinfo * 25)
-        + (len(hidden_chunks) * 20),
+    # STAGE 3: Semantic threat intent analysis
+    intent_result = threat_intent(
+        email_text=parsed.text_body or "",
+        html_content=html_source
     )
 
+    intent_data = intent_result["threat_intent"]
+
     intent = ThreatIntent(
-        primary_intent="SUSPICIOUS" if calculated_risk >= 35 else "BENIGN",
-        risk_score=calculated_risk,
-        urgency_score=0.0,
-        flagged_coercion_cues=hidden_chunks,
-        suspicious_urls=suspicious_urls,
+        primary_intent=intent_data["primary_intent"],
+        risk_score=round(intent_data["risk_score"]),
+        urgency_score=intent_data["urgency_score"],
+        flagged_coercion_cues=intent_data["flagged_coercion_cues"],
+        suspicious_urls=[
+            SuspiciousURL(**url)
+            for url in intent_data["suspicious_urls"]
+        ],
     )
 
     append_custody_entry(
         ledger,
-        action=f"INTENT_ANALYSIS (Risk: {calculated_risk}, Intent: {intent.primary_intent})",
+        action=f"INTENT_ANALYSIS (Risk: {intent_data["risk_score"]}, Intent: {intent.primary_intent})",
         actor="system/intent",
     )
 
