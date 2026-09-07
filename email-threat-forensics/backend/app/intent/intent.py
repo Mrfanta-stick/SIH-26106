@@ -26,30 +26,27 @@ import spacy
 from typing import Dict, List, Any
 from sentence_transformers import SentenceTransformer, util
 
-import pattern
-import extractor
+from .pattern import *
+from . import extractor
 
 # globals
 s_transfromer = SentenceTransformer("all-MiniLM-L6-v2")
 coercion_prototype_embeddings = {}
-# urgency_prototype_embeddings = []
 urgency_prototype_embeddings = {}
 categories = []
 
 nlp = spacy.blank("en")          # to be used for spliting email into sentences
 nlp.add_pipe("sentencizer")
 
+print("weight had been loaded")
 
 # -------------------  basic initialisation  ---------------------
-for category, examples in pattern.COERCION_PROTOTYPES.items():
+for category, examples in COERCION_PROTOTYPES.items():
     embeddings = s_transfromer.encode(examples, normalize_embeddings=True)
     coercion_prototype_embeddings[category] = embeddings
     categories.append(category)
 
-# for urgency_pattern in pattern.URGENCY_PATTERNS_SEMANTIC:
-#     urgency_prototype_embeddings.append(s_transfromer.encode(urgency_pattern, normalize_embeddings=True))
-
-for category, examples in pattern.URGENCY_FACTOR_SEMANTICS.items():
+for category, examples in URGENCY_FACTOR_SEMANTICS.items():
     embeddings = s_transfromer.encode(examples, normalize_embeddings=True)
     urgency_prototype_embeddings[category] = embeddings
 
@@ -350,8 +347,8 @@ def _find_coercion_cues(category: str, sentence_intent_probabilities: List[Dict[
 
 def _urgency_score_calculation(sentence_embeddings: Dict[str, Any],
                                urgency_prototype_embeddings: Dict[str, List[Any]] = urgency_prototype_embeddings,
-                               decay_rates: Dict[str, float] = pattern.DECAY_RATES,
-                               urgency_weight: Dict[str, float] = pattern.URGENCY_WEIGHTS,
+                               decay_rates: Dict[str, float] = DECAY_RATES,
+                               urgency_weight: Dict[str, float] = URGENCY_WEIGHTS,
                                semantic_threshold: float = 0.62) -> Dict[str, float]:
 
     if not sentence_embeddings:
@@ -413,7 +410,7 @@ def _risk_score_calculation(number_of_suspicious_urls: int,
     """
 
     # Unknown or benign intent should contribute no significant risk
-    intent_score = pattern.intent_risk.get(primary_intent, 0.0)
+    intent_score = intent_risk.get(primary_intent, 0.0)
 
     # Normalize suspicious URL count.
     # 3 or more suspicious URLs gives maximum URL contribution.
@@ -497,7 +494,7 @@ def threat_intent(email_text: str, html_content: str | None = None) -> Dict[str,
         "threat_intent": {
             "primary_intent": intent,
             "risk_score": risk_score * 100,
-            "urgency_score": urgency_score * 100,
+            "urgency_score": urgency_score,
             "flagged_coercion_cues": coercion_cues,
             "suspicious_urls": suspicious_urls
         }
