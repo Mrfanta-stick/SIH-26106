@@ -32,24 +32,29 @@ import extractor
 # globals
 s_transfromer = SentenceTransformer("all-MiniLM-L6-v2")
 coercion_prototype_embeddings = {}
-urgency_prototype_embeddings = []
+# urgency_prototype_embeddings = []
+urgency_prototype_embeddings = {}
 categories = []
 
 nlp = spacy.blank("en")          # to be used for spliting email into sentences
 nlp.add_pipe("sentencizer")
 
 
-# basic initialisation
+# -------------------  basic initialisation  ---------------------
 for category, examples in pattern.COERCION_PROTOTYPES.items():
     embeddings = s_transfromer.encode(examples, normalize_embeddings=True)
     coercion_prototype_embeddings[category] = embeddings
     categories.append(category)
 
-for urgency_pattern in pattern.URGENCY_PATTERNS_SEMANTIC:
-    urgency_prototype_embeddings.append(s_transfromer.encode(urgency_pattern, normalize_embeddings=True))
+# for urgency_pattern in pattern.URGENCY_PATTERNS_SEMANTIC:
+#     urgency_prototype_embeddings.append(s_transfromer.encode(urgency_pattern, normalize_embeddings=True))
+
+for category, examples in pattern.URGENCY_FACTOR_SEMANTICS.items():
+    embeddings = s_transfromer.encode(examples, normalize_embeddings=True)
+    urgency_prototype_embeddings[category] = embeddings
 
 
-# helper functions
+# ----------------------  helper functions  ------------------------
 def _split_sentences(email_text: str) -> list[str]:
     """
     Split email text into individual sentences
@@ -344,56 +349,57 @@ def _find_coercion_cues(category: str, sentence_intent_probabilities: List[Dict[
     return coercion_cues
 
 def _urgency_score_calculation(sentence_embeddings: Dict[str, Any],
-                               urgency_prototype_embeddings: List[Any] = urgency_prototype_embeddings,
-                               semantic_threshold: float = 0.62) -> float:
-    """
-    Calculate the urgency score of an email using semantic and regex-based
-    analysis.
+                               urgency_prototype_embeddings: Dict[str, List[Any]] = urgency_prototype_embeddings,
+                               decay_rates: Dict[str, float] = pattern.DECAY_RATES,
+                               urgency_weight: Dict[str, float] = pattern.URGENCY_WEIGHTS,
+                               semantic_threshold: float = 0.62) -> Dict[str, float]:
 
-    Process:
-        1. Compare each sentence against urgency prototypes using cosine similarity.
-        2. Ignore sentences below the semantic urgency threshold.
-        3. Count regex-based urgency cues in semantically urgent sentences.
-        4. Weight cue counts by their semantic similarity.
-        5. Accumulate weighted cues from all sentences.
-        6. Normalize the result to a score between 0 and 1 using a
-           saturating exponential function.
+    if not sentence_embeddings:
+        return -1.0
 
-    Returns:
-        float: Urgency score in the range [0, 1].
-    """
-    if not sentence_embeddings or not urgency_prototype_embeddings:
-        return 0.0
+    # Active urgency memory for each category
+    urgency_semantic_scores = {
+        "IMMEDIATE_ACTION": 0.0,
+        "EXPLICIT_DEADLINE": 0.0,
+        "DELAY_CONSEQUENCE": 0.0,
+        "PERMANENT_LOSS": 0.0,
+        "EXPLICIT_URGENCY_LANGUAGE": 0.0,
+        "SCARCITY_TIME_PRESSURE": 0.0,
+    }
 
-    total_weighted_urgency_cues = 0
     for sentence, sentence_embedding in sentence_embeddings.items():
-        # Semantic urgency detection
-        cosine_scores = util.cos_sim(
-            sentence_embedding,
-            urgency_prototype_embeddings
-        )[0]
-        max_similarity = float(cosine_scores.max().item())
+        for category, urgency_embeddings in urgency_prototype_embeddings.items():
 
-        # Sentence does not convey an urgent tone
-        if max_similarity < semantic_threshold:
-            continue
+            urgency_semantic_scores[category] *= decay_rates[category]
+            similarities = util.cos_sim(sentence_embedding, urgency_embeddings)[0]
+            category_semantic_score = float(similarities.max())
 
-        # Count regex urgency cues
-        sentence_cue_count = 0
-        for regex_pattern in pattern.URGENCY_PATTERNS_REGEX:
-            matches = re.findall(regex_pattern, sentence, flags=re.IGNORECASE)
-            sentence_cue_count += len(matches)
+            if category_semantic_score >= semantic_threshold:
+                previous_score = urgency_semantic_scores[category]
+                urgency_semantic_scores[category] = (previous_score + category_semantic_score * (1 - previous_score))
 
-        total_weighted_urgency_cues += sentence_cue_count * max_similarity
+    urgency_score = 0.0
+    for category, weight in urgency_weight.items():
+        urgency_score += urgency_semantic_scores[category] * weight
 
-    # Convert cue count to score
-    if total_weighted_urgency_cues == 0:
-        return 0.0
+    print("\n========== URGENCY ANALYSIS ==========")
 
-    # Saturating function
-    urgency_score = 1 - math.exp(-total_weighted_urgency_cues / 3)
+    for category, score in urgency_semantic_scores.items():
+        weight = urgency_weight.get(category, 0.0)
+        contribution = score * weight
 
-    return min(urgency_score, 1.0)
+        print(
+            f"{category:<30} "
+            f"score={score:.4f} | "
+            f"weight={weight:.2f} | "
+            f"contribution={contribution:.4f}"
+        )
+
+    print("--------------------------------------")
+    print(f"FINAL URGENCY SCORE: {urgency_score:.4f}")
+    print("======================================\n")
+
+    return round(urgency_score, 4)
 
 
 def _risk_score_calculation(number_of_suspicious_urls: int,
@@ -496,4 +502,3 @@ def threat_intent(email_text: str, html_content: str | None = None) -> Dict[str,
             "suspicious_urls": suspicious_urls
         }
     }
-
