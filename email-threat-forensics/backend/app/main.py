@@ -65,7 +65,6 @@ app.add_middleware(
 
 @app.get("/health", tags=["meta"])
 async def health() -> dict:
-    """Lightweight liveness probe."""
     return {
         "status": "ok",
         "pipeline_stages_active": [
@@ -74,13 +73,12 @@ async def health() -> dict:
             "auth_verifier",
             "domain_geo",
             "url_and_obfuscation_extractor",
+            "stage3_nlp_semantic_engine",
             "attribution_and_attachment_triage",
             "custody_anchoring",
-            "pdf_export"
+            "pdf_export",
         ],
-        "pipeline_stages_pending": [
-            "stage3_nlp_semantic_engine",
-        ],
+        "pipeline_stages_pending": [],
     }
 
 
@@ -165,18 +163,16 @@ async def export_pdf_direct(report: MasterForensicReport):
     )
 
 def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
-    # Execute ingestion, origin network resolution, and body analysis against raw bytes.
-
+    """Execute stages 1 through 5 against raw email bytes."""
     ledger: List[ChainOfCustodyEntry] = []
 
     # STAGE 1: Evidence hashing & RFC 5322 parsing
     evidence: EvidenceMetadata = ingest.extract_evidence(payload, filename)
     append_custody_entry(
         ledger,
-        action=f"EVIDENCE_INTAKE (SHA-256: {evidence.sha256[:16]})",
+        action=f"EVIDENCE_INTAKE (SHA-256: {evidence.sha256[:16]}…)",
         actor="system/ingest",
     )
-
     parsed = ingest.parse_payload(payload, filename)
 
     # STAGE 1 & 2: Hop tracing, authentication, and origin enrichment
@@ -186,54 +182,53 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
         from_address=parsed.from_address or "",
         ip=origin_ip,
     )
-
     append_custody_entry(
         ledger,
         action=f"NETWORK_ENRICHMENT (Origin: {origin_ip or 'unknown'}, Country: {origin.country})",
         actor="system/network",
     )
 
-    # STAGE 3: Hidden-text de-obfuscation & URL mismatch extraction
+    # STAGE 3: Zero-font extraction, semantic intent, and URL triage
     html_source = parsed.html_body or ""
     _, hidden_chunks = detect_zero_font_obfuscation(html_source)
-    raw_urls = extract_and_analyze_urls(html_source)
+    email_text = getattr(parsed, "text_body", None) or getattr(parsed, "body", "") or ""
+
+    intent_result = threat_intent(
+        email_text=email_text,
+        html_content=html_source,
+    )
+    intent_data = intent_result.get("threat_intent", intent_result)
+
+    # Merge NLP coercion cues with zero-font evasion chunks
+    coercion_cues = list(
+        dict.fromkeys(intent_data.get("flagged_coercion_cues", []) + hidden_chunks)
+    )
 
     suspicious_urls: List[SuspiciousURL] = [
         SuspiciousURL(
             anchor_text=u.get("anchor_text", "<empty>"),
             destination=u.get("destination", ""),
             is_mismatch=bool(u.get("is_mismatch", False)),
-            domain=u.get("dest_domain", "unknown"),
+            domain=u.get("domain") or u.get("dest_domain", "unknown"),
         )
-        for u in raw_urls
+        for u in intent_data.get("suspicious_urls", [])
     ]
 
-    # STAGE 3: Semantic threat intent analysis
-    intent_result = threat_intent(
-        email_text=parsed.text_body or "",
-        html_content=html_source
-    )
-
-    intent_data = intent_result["threat_intent"]
-
     intent = ThreatIntent(
-        primary_intent=intent_data["primary_intent"],
-        risk_score=round(intent_data["risk_score"]),
-        urgency_score=intent_data["urgency_score"],
-        flagged_coercion_cues=intent_data["flagged_coercion_cues"],
-        suspicious_urls=[
-            SuspiciousURL(**url)
-            for url in intent_data["suspicious_urls"]
-        ],
+        primary_intent=intent_data.get("primary_intent", "UNKNOWN"),
+        risk_score=int(round(intent_data.get("risk_score", 0))),
+        urgency_score=float(intent_data.get("urgency_score", 0.0)),
+        flagged_coercion_cues=coercion_cues,
+        suspicious_urls=suspicious_urls,
     )
 
     append_custody_entry(
         ledger,
-        action=f"INTENT_ANALYSIS (Risk: {intent_data["risk_score"]}, Intent: {intent.primary_intent})",
+        action=f"INTENT_ANALYSIS (Risk: {intent.risk_score}, Intent: {intent.primary_intent})",
         actor="system/intent",
     )
 
-    # STAGE 4: Attachment triage and routing graph attribution
+    # STAGE 4: Static attachment triage and routing graph attribution
     attribution = integrate(
         payload,
         parsed,
@@ -241,15 +236,15 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
     )
     stage4 = attribution["stage4_analysis"]
     attachment_forensics: List[AttachmentReport] = [
-    AttachmentReport(
-        filename=attachment["filename"],
-        detected_magic=attachment["magic_type"],
-        risk=attachment["risk"],
-        size_bytes=attachment.get("size_bytes"),
-        sha256=attachment.get("sha256"),
-        virustotal_scan=attachment.get("virustotal_scan"),
-    )
-        for attachment in stage4["attachments"]
+        AttachmentReport(
+            filename=att["filename"],
+            detected_magic=att["magic_type"],
+            risk=att["risk"],
+            size_bytes=att.get("size_bytes"),
+            sha256=att.get("sha256"),
+            virustotal_scan=att.get("virustotal_scan"),
+        )
+        for att in stage4["attachments"]
     ]
     topology = GraphTopology(**stage4["routing_graph"])
     append_custody_entry(
@@ -258,6 +253,7 @@ def _analyse_bytes(payload: bytes, filename: str) -> MasterForensicReport:
         actor="system/attribution",
     )
 
+    # STAGE 5: Cryptographic Ledger Integrity Check
     if not verify_ledger_integrity(ledger):
         logger.error("Audit ledger integrity check failed during analysis pipeline")
         raise RuntimeError("Chain of custody ledger validation failed: hash chain broken.")
