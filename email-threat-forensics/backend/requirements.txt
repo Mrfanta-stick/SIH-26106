@@ -16,6 +16,8 @@ geoip2>=4.8              # MaxMind GeoLite2 / GeoLite2-ASN readers
 
 # ── Stage 3 — Intent Parsing ───────────────────────────────────────────
 BeautifulSoup4>=4.15.0
+spacy>=3.8.16
+sentence_transformers>=6.0.1
 
 # ── Stage 4 — Attribution ───────────────────────────────────────────────
 redis>=5.0
@@ -25,5 +27,3 @@ python-magic>=0.4.27 # provides the magic module used for attachment type detect
 
 # ── Stage 5 — Chain of custody and PDF export ───────────────────────────
 weasyprint>=69.0
-spacy>=3.8.16
-sentence_transformers>=6.0.1
