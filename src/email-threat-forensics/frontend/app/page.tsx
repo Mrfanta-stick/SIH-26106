@@ -17,7 +17,6 @@ import { RawHeaders } from './components/RawHeaders';
 import { ForensicScannerModal } from './components/ForensicScannerModal';
 import { MitreMatrix } from './components/MitreMatrix';
 import { DossierModal } from './components/DossierModal';
-import { mockForensicReport } from './data/mockReport';
 import { API_BASE, formatApiError } from './types/forensic';
 
 function CyberTelemetryBackground() {
@@ -102,7 +101,6 @@ export default function ForensicApp() {
   useEffect(() => {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === '1') {
       setIsPreview(true);
-      setReport(mockForensicReport);
       setCurrentView('console');
     }
   }, []);
