@@ -22,12 +22,6 @@ from __future__ import annotations
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
-
-# Configuration shared across every model in the contract.
-
-# We standardise on extra="forbid" so the contract cannot be silently
-# extended at runtime — any drift will surface as a ValidationError during
-# CI rather than as opaque dictionary keys leaking into the JSON payload.
 _BASE_CONFIG: ConfigDict = ConfigDict(
     extra="forbid",
     frozen=False,
@@ -37,7 +31,6 @@ _BASE_CONFIG: ConfigDict = ConfigDict(
 
 
 class EvidenceMetadata(BaseModel):
-    # Provenance metadata captured at ingestion time.
     model_config = _BASE_CONFIG
     filename: str = Field(
         description="Original filename as supplied by the operator / frontend.",
@@ -51,8 +44,6 @@ class EvidenceMetadata(BaseModel):
 
 
 class DomainAlignment(BaseModel):
-    # RFC 5322 envelope-vs-header domain alignment evaluation.
-
     model_config = _BASE_CONFIG
     from_domain: str = Field(
         description="Domain extracted from the header ``From:`` address.",
@@ -73,8 +64,6 @@ class DomainAlignment(BaseModel):
 
 
 class ProtocolForensics(BaseModel):
-    # Authentication framework verdicts lifted from Authentication-Results.
-
     model_config = _BASE_CONFIG
     spf: str = Field(
         description="SPF verdict — one of PASS, FAIL, SOFTFAIL, NONE, TEMPERROR.",
@@ -89,8 +78,6 @@ class ProtocolForensics(BaseModel):
 
 
 class OriginNetwork(BaseModel):
-    # Geo-enriched view of the originating SMTP / submission hop.
-
     model_config = _BASE_CONFIG
 
     ip: str = Field(description="Public IPv4/IPv6 address of the earliest hop.")
@@ -120,8 +107,6 @@ class OriginNetwork(BaseModel):
 
 
 class SuspiciousURL(BaseModel):
-    # An anchor whose visible text and href target disagree.
-
     model_config = _BASE_CONFIG
 
     anchor_text: str = Field(description="Visible text inside the ``<a>`` tag.")
@@ -133,8 +118,6 @@ class SuspiciousURL(BaseModel):
 
 
 class ThreatIntent(BaseModel):
-    # Group 3 semantic & linguistic threat verdict.
-
     model_config = _BASE_CONFIG
     primary_intent: str = Field(
         description=(
@@ -161,8 +144,6 @@ class ThreatIntent(BaseModel):
 
 
 class AttachmentReport(BaseModel):
-    # Static analysis verdict for a single attachment.
-
     model_config = _BASE_CONFIG
 
     filename: str = Field(description="Attachment filename as transmitted.")
@@ -175,37 +156,39 @@ class AttachmentReport(BaseModel):
             "STAGED_PAYLOAD, MACRO_DOCUMENT, UNKNOWN."
         ),
     )
-
     size_bytes: Optional[int] = Field(
         default=None, 
         description="Size of file in bytes."
     )
-
     sha256: Optional[str] = Field(
         default=None, 
         description="SHA-256 hash of attachment."
     )
-
     virustotal_scan: Optional[dict] = Field(
         default=None, 
         description="VirusTotal detection stats."
     )
 
-class GraphNode(BaseModel):
-    # A node in the React Flow campaign-cluster topology.
 
+class GraphNode(BaseModel):
     model_config = _BASE_CONFIG
 
     id: str = Field(description="Stable, unique node identifier (e.g. email, IP, ASN).")
     label: str = Field(description="Human-readable node label.")
     type: str = Field(
-        description="Node type discriminator — e.g. 'sender', 'ip', 'asn', 'domain'.",
+        description="Node type discriminator — e.g. 'origin', 'mta', 'destination'.",
+    )
+    ip: Optional[str] = Field(
+        default=None,
+        description="Host IP address.",
+    )
+    suspicious: Optional[bool] = Field(
+        default=False,
+        description="Flag indicating if the node is deemed suspicious.",
     )
 
 
 class GraphEdge(BaseModel):
-    # A directed relationship between two graph nodes.
-
     model_config = _BASE_CONFIG
 
     source: str = Field(description="Source :class:`GraphNode` ``id``.")
@@ -216,11 +199,13 @@ class GraphEdge(BaseModel):
     latency: str = Field(
         description="Observed or estimated propagation delay, e.g. '12ms'.",
     )
+    auth_status: Optional[str] = Field(
+        default=None,
+        description="Authentication and encryption status: 'pass' or 'fail'.",
+    )
 
 
 class GraphTopology(BaseModel):
-    # Full React Flow topology payload.
-
     model_config = _BASE_CONFIG
 
     nodes: List[GraphNode] = Field(
@@ -238,8 +223,6 @@ class GraphTopology(BaseModel):
 
 
 class ChainOfCustodyEntry(BaseModel):
-    # One append-only entry in the SHA-256 hash-chained audit ledger.
-
     model_config = _BASE_CONFIG
 
     sequence: int = Field(ge=0, description="Strictly monotonic ledger index.")
@@ -257,8 +240,6 @@ class ChainOfCustodyEntry(BaseModel):
 
 
 class MasterForensicReport(BaseModel):
-    # The single Pydantic V2 instance exchanged with the Next.js frontend.
-
     model_config = _BASE_CONFIG
 
     case_id: str = Field(
