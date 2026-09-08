@@ -24,6 +24,18 @@ const Popup = dynamic(
   { ssr: false }
 );
 
+// Resolve Carto API Key from environment variables
+const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY?.trim() || "";
+
+// If teammate provides an API key, use Carto; otherwise fallback to Esri Dark Canvas (clean dark mode, zero watermarks)
+const TILE_URL = CARTO_API_KEY
+  ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?api_key=${CARTO_API_KEY}`
+  : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+
+const TILE_ATTRIBUTION = CARTO_API_KEY
+  ? '&copy; <a href="https://carto.com/">CARTO</a>'
+  : '&copy; <a href="https://www.esri.com/">Esri</a>';
+
 export interface GeoHop {
   id?: string;
   ip?: string;
@@ -134,14 +146,15 @@ export function ThreatMap({ report, hops }: ThreatMapProps) {
             <div className="h-[290px] w-full rounded-lg border border-cyan-500/30 bg-[#08090c] overflow-hidden relative shadow-inner transition-all duration-300">
               {isMounted ? (
                 <MapContainer
+                  key={`map-${mapCenter[0]}-${mapCenter[1]}`}
                   center={mapCenter}
                   zoom={3}
                   style={{ height: "100%", width: "100%", backgroundColor: "#08090c" }}
                   scrollWheelZoom={false}
                 >
                   <TileLayer
-                    attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    attribution={TILE_ATTRIBUTION}
+                    url={TILE_URL}
                   />
 
                   {activeHops.map((hop, idx) => {
@@ -150,7 +163,7 @@ export function ThreatMap({ report, hops }: ThreatMapProps) {
                     const isSuspicious = hop.suspicious;
                     return (
                       <CircleMarker
-                        key={hop.id || idx}
+                        key={hop.id || `marker-${idx}`}
                         center={[hop.lat, hop.lng]}
                         radius={8}
                         pathOptions={{
