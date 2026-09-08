@@ -1,4 +1,4 @@
-# SIH 2026 Project for team Mentalists
+# SIH 2026 Project for team, The Mentalists.
 
 ## 1. Project Information
 
