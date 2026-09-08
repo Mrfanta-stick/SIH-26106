@@ -39,7 +39,7 @@ SpectreDFIR requires the user to upload a `.eml`/`.msg` file.
 * Origin Tracing — Unfolds `Received:` headers to trace back to the earliest public origin IP
 * IP Enrichment — Offline GeoLite2 profiling for ASN, coordinates, and VPN/Datacenter classification
 * Attachment Triage — In-memory magic byte inspection to detect extension spoofing and container smuggling, paired with cached VirusTotal hash reputation
-* Campaign Clustering — Links incidents across cases via shared IP subnets, nameservers, and DKIM keys
+* Campaign Clustering — Links incidents across cases via shared IP subnets, nameservers, and DKIM keys (For future implementation)
 * Cryptographic audit ledger and chain of custody
 * Evidence tampering detection
 * Automated PDF forensic report generation
@@ -69,7 +69,7 @@ See [docs/architecture.md](docs/architecture.md).
 
 * Extract body text → compute BEC intent & urgency scores
 * Scan attachments → format React Flow graph & cluster campaign
-* Append record to hash-chained custody ledger in PostgreSQL
+* Append record to hash-chained custody ledger in PostgreSQL (For future)
                         │
                         V (HTTP 200 Response)
 
@@ -153,17 +153,8 @@ SIH-26106
         │   │       ThreatGauges.tsx
         │   │       ThreatMap.tsx
         │   │       
-        │   ├───data
-        │   │       mockReport.ts
-        │   │       
         │   └───types
         │           forensic.ts
-        │           
-        ├───docs
-        │   │   backend-timeout-behavior.md
-        │   │   
-        │   └───api
-        │           analyze.md
         │           
         └───scripts
                 lint.mjs
@@ -207,7 +198,7 @@ cd email-threat-forensics/backend
 python -m uvicorn app.main:app --reload
 ```
 
-To run frontend
+To run frontend (* Ensure Node.js and NPM are installed)
 ```bash
 cd email-threat-forensics/frontend
 npm run dev
