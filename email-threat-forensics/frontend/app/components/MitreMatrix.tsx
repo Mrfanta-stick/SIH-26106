@@ -146,7 +146,7 @@ export const MitreMatrix: React.FC<MitreMatrixProps> = ({ report }) => {
         <div className="flex items-center gap-2.5">
           <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400"><Crosshair className="w-5 h-5" /></div>
           <div>
-            <h2 className="text-sm font-bold tracking-tight uppercase text-white font-mono">MITRE ATTACK Mapping</h2>
+            <h2 className="text-sm font-bold tracking-tight uppercase text-white font-mono">MITRE ATT&CK Mapping</h2>
             <p className="text-xs text-slate-400">Techniques inferred from the live forensic report</p>
           </div>
         </div>
