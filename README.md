@@ -180,13 +180,13 @@ pip install -r requirements.txt
 
 To run backend server
 ```bash
-cd email-threat-forensics/src/email-threat-forensics/backend
+cd "SIH 26106/src/email-threat-forensics/backend"
 python -m uvicorn app.main:app --reload
 ```
 
 To run frontend (* Ensure Node.js and NPM are installed)
 ```bash
-cd email-threat-forensics/src/email-threat-forensics/frontend
+cd "SIH 26106/src/email-threat-forensics/frontend"
 npm run dev
 ```
 
