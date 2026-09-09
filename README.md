@@ -50,7 +50,6 @@ SpectreDFIR requires the user to upload a `.eml`/`.msg` file.
 - Frontend: Next.js
 - Backend: Python
 - Machine Learning Models: [`Sentence Transformer (all-MiniLM-L6-v2)`](https://sbert.net/), [`spaCy Blank English Model`](https://spacy.io/models/en)
-- Deployment: Cloud
 
 ## 6. Architecture
 
@@ -192,4 +191,25 @@ npm run dev
 
 ## 13. Future Scope
 
-Describe realistic improvements or extensions that can be made to the project.
+1. **Cross-Case Campaign Correlation & Graph Clustering**
+   Transition from isolated single-email triage to global campaign intelligence using a graph database (e.g., Neo4j).
+   Automatically cluster independent cases under a unified `campaign_cluster_id` by correlating shared infrastructure attributes: identical DKIM key selectors, origin `/24` subnets, registrar data, and matching attachment SHA-256 hashes across multiple targets.
+
+2. **Dynamic Malware Sandboxing (CAPE / Cuckoo Integration)**
+   Expand beyond Stage 4 static magic-byte triage by orchestrating automated detonation of suspicious payloads within an isolated, headless VM or containerized sandbox.
+   Capture runtime behavioral indicators: process tree injection, Windows API hooking, registry modifications, and outbound Command & Control (C2) network beacons.
+
+3. **Visual Threat Parser & "Quishing" (QR Phishing) Detection**
+   Integrate lightweight OCR (Tesseract / Vision models) and automated computer vision parsing to counter evasive attacks where threat text is embedded inside attached images or flattened PDFs.
+   Detect and decode embedded QR codes ("quishing") and evaluate the extracted destination target through the Stage 3 URL de-obfuscation pipeline.
+
+4. **Mailbox Sensors & Automated SIEM/SOAR Ingestion**
+   Ingest evidence automatically using live webhooks and connectors (Microsoft Graph API, Google Workspace API, and IMAP sensor daemons) rather than relying solely on manual analyst `.eml` uploads.
+   Stream structured IOCs directly into SOC platforms (Splunk, Microsoft Sentinel, Cortex XSOAR) formatted as standardized STIX 2.1 bundles over TAXII feeds.
+
+5. **RFC 3161 Cryptographic Timestamping & Hardware Custody**
+   Upgrade the current SHA-256 software hash chain into court-certified digital evidence by binding block generation to an RFC 3161 compliant Trusted Timestamping Authority (TSA).
+   Integrate Hardware Security Modules (HSMs) or KMS-managed asymmetric signing keys to guarantee immutable non-repudiation under ISO/IEC 27037 and national digital evidence admissibility standards.
+
+6. **Persistent Forensic Case Management & Retention**
+   Replace the volatile in-memory cache with an enterprise database (MongoDB with TimescaleDB) to maintain historical audit ledgers, case search indexing, and role-based access control (RBAC) across forensic investigator teams.
