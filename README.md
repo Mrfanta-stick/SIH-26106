@@ -145,29 +145,7 @@ email-threat-forensics/
 ├── requirements.txt
 ```
 
-## 8. Final Presentation
-
-Keep your final SIH presentation in the repository whenever the file size allows it.
-
-See [submission/PRESENTATION.md](submission/PRESENTATION.md) for the required format.
-
-If the PPT is too large for GitHub, use Google Drive/OneDrive and put the accessible viewer link in `submission/PRESENTATION.md`.
-
-## 9. Demo Video
-
-A demo video is **optional**, but recommended.
-
-Add the YouTube/Google Drive link in [submission/DEMO.md](submission/DEMO.md).
-
-## 10. Screenshots / Prototype Photos
-
-Add important screenshots or hardware/prototype photos to:
-
-`assets/screenshots/`
-
-See [assets/screenshots/README.md](assets/screenshots/README.md) for examples and naming conventions.
-
-## 11. Installation
+## 10. Installation
 
 ```bash
 git clone git@github.com:Mrfanta-stick/SIH-26106.git
@@ -175,7 +153,7 @@ cd email-threat-forensics/backend
 pip install -r requirements.txt
 ```
 
-## 12. Run
+## 11. Run
 
 To run backend server
 ```bash
@@ -189,7 +167,7 @@ cd "SIH 26106/src/email-threat-forensics/frontend"
 npm run dev
 ```
 
-## 13. Future Scope
+## 12. Future Scope
 
 1. **Cross-Case Campaign Correlation & Graph Clustering**
    Transition from isolated single-email triage to global campaign intelligence using a graph database (e.g., Neo4j).
