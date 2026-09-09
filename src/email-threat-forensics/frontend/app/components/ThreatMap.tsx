@@ -25,16 +25,14 @@ const Popup = dynamic(
 );
 
 // Resolve Carto API Key from environment variables
-const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY?.trim() || "";
+const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API?.trim() || "";
 
 // If teammate provides an API key, use Carto; otherwise fallback to Esri Dark Canvas (clean dark mode, zero watermarks)
-const TILE_URL = CARTO_API_KEY
-  ? `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?api_key=${CARTO_API_KEY}`
-  : "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+const TILE_URL =
+  "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 
-const TILE_ATTRIBUTION = CARTO_API_KEY
-  ? '&copy; <a href="https://carto.com/">CARTO</a>'
-  : '&copy; <a href="https://www.esri.com/">Esri</a>';
+const TILE_ATTRIBUTION =
+  '&copy; <a href="https://carto.com/">CARTO</a>';
 
 export interface GeoHop {
   id?: string;

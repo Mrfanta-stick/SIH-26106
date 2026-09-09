@@ -22,9 +22,13 @@ cache_db = None
 
 if REDIS_URL and REDIS_URL != "NOT_FOUND":
     try:
-        cache_db = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=5, ssl_cert_reqs="none")
+        cache_db = redis.Redis.from_url(
+            REDIS_URL,
+            decode_responses=True,
+            socket_timeout=5,
+        )
         cache_db.ping()
-    except redis.TimeoutError as e:
+    except redis.RedisError as e:
         print("Redis connection error: ", e)
         cache_db = None
 

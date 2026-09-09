@@ -22,7 +22,8 @@ sentence_transformers>=6.0.1
 # ── Stage 4 — Attribution ───────────────────────────────────────────────
 redis>=5.0
 python-dotenv>=1.0
-python-magic>=0.4.27 # provides the magic module used for attachment type detection
+python-magic>=0.4.27; sys_platform!=='win32' # provides the magic module used for attachment type detection
+python-magic-bin>=0.4.14; sys_platform=='win32'
 
 
 # ── Stage 5 — Chain of custody and PDF export ───────────────────────────
