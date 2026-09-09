@@ -80,81 +80,70 @@ See [docs/architecture.md](docs/architecture.md).
 ## 7. Repository Structure
 
 ```text
-SIH-26106
-│   .gitignore
-│   
-└───email-threat-forensics
-    ├───backend
-    │   │   requirements.txt
-    │   │   
-    │   └───app
-    │       │   main.py
-    │       │   __init__.py
-    │       │   
-    │       ├───attribution
-    │       │       attachment_parser.py
-    │       │       graph_builders.py
-    │       │       master_builder.py
-    │       │       __init__.py
-    │       │       
-    │       ├───custody
-    │       │       audit_ledger.py
-    │       │       pdf_generator.py
-    │       │       
-    │       ├───data
-    │       │       GeoLite2-ASN.mmdb
-    │       │       GeoLite2-City.mmdb
-    │       │       
-    │       ├───intent
-    │       │       extractor.py
-    │       │       intent.py
-    │       │       pattern.py
-    │       │       __init__.py
-    │       │       
-    │       ├───network
-    │       │       auth_verifier.py
-    │       │       domain_geo.py
-    │       │       hop_tracer.py
-    │       │       ingest.py
-    │       │       __init__.py
-    │       │       
-    │       └───schemas
-    │               forensic_report.py
-    │               __init__.py
-    │               
-    └───frontend
-        │   .env.local.example
-        │   .gitignore
-        │   package-lock.json
-        │   package.json
-        │   postcss.config.mjs
-        │   tsconfig.json   
-        ├───app
-        │   │   favicon.ico
-        │   │   globals.css
-        │   │   layout.tsx
-        │   │   page.tsx
-        │   │   
-        │   ├───components
-        │   │       AiVerdict.tsx
-        │   │       AttachmentTriage.tsx
-        │   │       CaseHeader.tsx
-        │   │       ChainOfCustody.tsx
-        │   │       CyberHoloCore3D.tsx
-        │   │       DossierModal.tsx
-        │   │       Dropzone.tsx
-        │   │       ForensicScannerModal.tsx
-        │   │       HopGraph.tsx
-        │   │       MitreMatrix.tsx
-        │   │       RawHeaders.tsx
-        │   │       ThreatGauges.tsx
-        │   │       ThreatMap.tsx
-        │   │       
-        │   └───types
-        │           forensic.ts
-        │           
-        └───scripts
-                lint.mjs
+email-threat-forensics/
+├── src/
+│   └── email-threat-forensics/
+│       ├── backend/
+│       │   └── app/
+│       │       ├── attribution/
+│       │       │   ├── __init__.py
+│       │       │   ├── attachment_parser.py
+│       │       │   ├── graph_builders.py
+│       │       │   └── master_builder.py
+│       │       ├── custody/
+│       │       │   ├── audit_ledger.py
+│       │       │   └── pdf_generator.py
+│       │       ├── data/
+│       │       │   ├── GeoLite2-ASN.mmdb
+│       │       │   └── GeoLite2-City.mmdb
+│       │       ├── intent/
+│       │       │   ├── __init__.py
+│       │       │   ├── extractor.py
+│       │       │   ├── intent.py
+│       │       │   └── pattern.py
+│       │       ├── network/
+│       │       │   ├── __init__.py
+│       │       │   ├── auth_verifier.py
+│       │       │   ├── domain_geo.py
+│       │       │   ├── hop_tracer.py
+│       │       │   └── ingest.py
+│       │       ├── schemas/
+│       │       │   ├── __init__.py
+│       │       │   └── forensic_report.py
+│       │       └── main.py
+│       └── frontend/
+│           ├── app/
+│           │   ├── components/
+│           │   │   ├── AIVeridict.tsx
+│           │   │   ├── AttachmentTriage.tsx
+│           │   │   ├── CaseHeader.tsx
+│           │   │   ├── ChainOfCustody.tsx
+│           │   │   ├── CyberHoloCore3D.tsx
+│           │   │   ├── Dropzone.tsx
+│           │   │   ├── ForensicScannerModal.tsx
+│           │   │   ├── HopGraph.tsx
+│           │   │   ├── MitreMatrix.tsx
+│           │   │   ├── RawHeaders.tsx
+│           │   │   ├── ThreatGauges.tsx
+│           │   │   └── ThreatMap.tsx
+│           │   ├── types/
+│           │   │   └── forensic.ts
+│           │   ├── favicon.ico
+│           │   ├── globals.css
+│           │   ├── layout.tsx
+│           │   └── page.tsx
+│           ├── scripts/
+│           │   ├── lint.mjs
+│           │   └── .env.local.example
+│           ├── .github/
+│           ├── .gitignore
+│           ├── package-lock.json
+│           └── package.json
+├── postcss.config.mjs
+├── tsconfig.json
+├── .gitignore
+├── README.md
+├── requirements.txt
 ```
 
 ## 8. Final Presentation
@@ -191,13 +180,13 @@ pip install -r requirements.txt
 
 To run backend server
 ```bash
-cd email-threat-forensics/backend
+cd "SIH 26106/src/email-threat-forensics/backend"
 python -m uvicorn app.main:app --reload
 ```
 
 To run frontend (* Ensure Node.js and NPM are installed)
 ```bash
-cd email-threat-forensics/frontend
+cd "SIH 26106/src/email-threat-forensics/frontend"
 npm run dev
 ```
 
