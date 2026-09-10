@@ -301,6 +301,7 @@ P_c = \frac{e^{(A_c - A_{max}) / \tau}}{\sum_{i} e^{(A_i - A_{max}) / \tau}}
 $$
 
    where $\tau$ is the temperature parameter.
+   
 6. Determine the classification threshold $T_{rel}$ relative to the maximum categorical probability for the sentence $P_{max}$:
    
    $$ 
