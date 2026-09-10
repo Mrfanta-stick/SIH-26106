@@ -304,10 +304,10 @@ $$
    
 6. Determine the classification threshold $T_{rel}$ relative to the maximum categorical probability for the sentence $P_{max}$:
    
-   $$ 
-   T_{rel} = \max(0.04, P_{max} \times 0.8) 
-   $$
-   
+$$ 
+T_{rel} = \max(0.04, P_{max} \times 0.8) 
+$$
+
 7. Assign the category to the sentence as a candidate intent if $P_c > T_{rel}$. This relative threshold permits multi-label classification for sentences demonstrating high confidence across multiple intents.
 
 **Document-Level Intent Aggregation**
